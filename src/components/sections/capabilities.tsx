@@ -5,59 +5,116 @@ import { Lock, BarChart3, Upload, Share2, Globe, FileText } from "lucide-react"
 const capabilities = [
   {
     icon: FileText,
-    title: "Centralized Storage",
-    description: "Digital storage for all medical records",
+    title: "Centralized Health Records",
+    points: [
+      "All medical reports in one secure digital vault",
+      "Prescriptions, lab results, and history in one place",
+    ],
   },
   {
     icon: BarChart3,
-    title: "Visual Tracking",
-    description: "Health vitals tracked over time",
+    title: "Vitals & Trend Tracking",
+    points: [
+      "Track glucose, BP, oxygen, and more",
+      "Understand health trends visually",
+    ],
   },
   {
     icon: Upload,
-    title: "Multi-Channel Upload",
-    description: "Reports via web, mobile, and WhatsApp",
+    title: "Multi-Channel Uploads",
+    points: [
+      "Upload reports via web, mobile, or WhatsApp",
+      "No dependency on a single device",
+    ],
   },
   {
     icon: Globe,
-    title: "Smart Retrieval",
-    description: "Intelligent filtering and search",
+    title: "Smart Search & Retrieval",
+    points: [
+      "Find records by date, type, or vitals",
+      "Instant access to critical information",
+    ],
   },
   {
     icon: Share2,
-    title: "Access Control",
-    description: "Permission-based secure sharing",
+    title: "Controlled Data Sharing",
+    points: [
+      "Share securely with doctors or family",
+      "Time-bound access permissions",
+    ],
   },
   {
     icon: Lock,
-    title: "Anywhere Access",
-    description: "Secure access from any device",
+    title: "Secure Anywhere Access",
+    points: [
+      "Enterprise-grade encryption",
+      "Access health data from any device",
+    ],
   },
 ]
 
 export default function Capabilities() {
   return (
-    <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-5xl font-800 text-primary mb-16 text-center text-balance">Core Capabilities</h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {capabilities.map((capability, index) => {
-            const Icon = capability.icon
-            return (
-              <div
-                key={index}
-                className="bg-white rounded-2xl p-8 shadow-medical h-64 flex flex-col justify-between border border-border/50 transition-all duration-300 hover:shadow-medical-lg"
-              >
-                <div>
-                  <Icon className="w-14 h-14 text-secondary mb-4 transition-colors duration-300" strokeWidth={1.5} />
-                  <h3 className="text-2xl font-700 text-primary mb-3">{capability.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed text-sm">{capability.description}</p>
+    <section className="pb-12 px-4 sm:px-6 lg:px-8 bg-white">
+      <div className="max-w-6xl mx-auto mb-12">
+        <h2 className="text-5xl font-800 text-primary text-center text-balance">
+          Core Capabilities
+        </h2>
+      </div>
+
+      <div className="max-w-6xl mx-auto grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {capabilities.map((capability, index) => {
+          const Icon = capability.icon
+          const isOdd = index % 2 === 0 // 1,3,5 visually
+
+          return (
+            <div key={index} className="relative h-[266px] perspective">
+              <div className="flip-container w-full h-full">
+
+                {/* FRONT SIDE */}
+                <div
+                  className={`
+                    flip-front rounded-2xl
+                    border border-border/50 shadow-medical
+                    flex flex-col items-center justify-center
+                    px-8 py-10 space-y-3
+                    ${isOdd ? "bg-secondary text-white" : "bg-white text-primary"}
+                  `}
+                >
+                  <Icon
+                    className={`w-16 h-16 ${isOdd ? "text-white" : "text-secondary"}`}
+                    strokeWidth={1.5}
+                  />
+                  <h3 className="text-2xl font-800 text-center">
+                    {capability.title}
+                  </h3>
                 </div>
-                <div className="h-1 bg-gradient-to-r from-secondary to-secondary-teal rounded-full mt-4 transition-all duration-300" />
+
+                {/* BACK SIDE */}
+                <div
+                  className={`
+                    flip-back rounded-2xl
+                    px-8 py-10
+                    flex flex-col justify-center space-y-4
+                    shadow-medical-lg
+                    ${isOdd ? "bg-white text-foreground" : "bg-secondary text-white"}
+                  `}
+                >
+                  <h3 className="text-xl font-700">
+                    {capability.title}
+                  </h3>
+
+                  <ul className="list-disc list-inside space-y-2 text-sm leading-relaxed">
+                    {capability.points.map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                </div>
+
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
       </div>
     </section>
   )

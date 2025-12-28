@@ -7,7 +7,7 @@ interface FinalCTAProps {
 export default function FinalCTA({ onCTAClick }: FinalCTAProps) {
   return (
     <section className="py-20 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="bg-gradient-to-r from-primary to-secondary rounded-2xl p-16 md:p-20 text-center shadow-medical-lg transform transition-all hover:shadow-2xl hover:scale-105 duration-300">
           <h2 className="text-5xl md:text-6xl font-800 text-white mb-8 text-balance leading-tight">
             Take Control of Your Health Data with Confidence

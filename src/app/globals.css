@@ -277,3 +277,55 @@ html {
     transform: scaleX(0.9);
   }
 }
+
+
+/* ===== FLIP CARD (STABLE & CROSS-BROWSER) ===== */
+
+.perspective {
+  perspective: 1200px;
+}
+
+.flip-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.7s ease;
+}
+
+.flip-container:hover {
+  transform: rotateY(180deg);
+}
+
+.flip-front,
+.flip-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.flip-front {
+  transform: rotateY(0deg);
+}
+
+.flip-back {
+  transform: rotateY(180deg);
+}
+
+
+@keyframes pulse-node {
+  0% {
+    box-shadow: 0 0 0 0 rgba(63, 196, 226, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(63, 196, 226, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(63, 196, 226, 0);
+  }
+}
+
+.node-active {
+  animation: pulse-node 2s infinite;
+}

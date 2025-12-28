@@ -28,7 +28,7 @@ const securityPoints = [
 
 export default function Security() {
   return (
-    <section id="security" className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
+    <section id="security" className="pb-16 px-4 sm:px-6 lg:px-8 bg-white">
       <div className="max-w-6xl mx-auto">
         <h2 className="text-5xl font-800 text-primary mb-4 text-center text-balance">Security & Privacy</h2>
         <p className="text-lg text-muted-foreground text-center max-w-2xl mx-auto mb-16 leading-relaxed">

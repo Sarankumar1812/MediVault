@@ -12,6 +12,7 @@ import Footer from "@/components/sections/footer"
 import AuthModal from "@/components/auth/auth-modal"
 import PrivacyModal from "@/components/auth/privacy-modal"
 import Toast from "@/components/toast"
+import AOSProvider from "@/components/providers/AOSProvider"
 
 export default function Home() {
   const [authOpen, setAuthOpen] = useState(false)
@@ -40,6 +41,7 @@ export default function Home() {
 
   return (
     <main className="bg-light-bg min-h-screen">
+      <AOSProvider>
       <Navbar onAuthClick={handleOpenAuth} />
       <Hero onCTAClick={() => handleOpenAuth("signup")} />
       <About />
@@ -58,6 +60,8 @@ export default function Home() {
       />
 
       <PrivacyModal open={privacyOpen} onOpenChange={setPrivacyOpen} />
+
+      </AOSProvider>
 
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </main>
