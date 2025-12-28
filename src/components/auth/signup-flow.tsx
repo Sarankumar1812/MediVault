@@ -6,6 +6,7 @@ import type { Value } from "react-phone-number-input"
 import DatePicker from "../custom/date-picker"
 import Dropdown from "../custom/dropdown"
 import CustomPhoneInput from "../custom/phone-input"
+import { setAuthToken } from "@/lib/auth-client"
 
 type SignupStep = "contact" | "otp" | "password" | "profile"
 
@@ -15,6 +16,32 @@ interface SignupFlowProps {
   onShowToast: (type: "success" | "error" | "warning" | "info", message: string) => void
   currentStep?: string
   onStepChange?: (step: string) => void
+  onSignupComplete?: () => void
+}
+
+// Extended props interfaces for disabled support
+interface CustomPhoneInputProps {
+  value?: Value;
+  onChange: (value?: Value) => void;
+  placeholder?: string;
+  required?: boolean;
+  disabled?: boolean;
+}
+
+interface DatePickerProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+interface DropdownProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  searchable?: boolean;
+  disabled?: boolean;
 }
 
 export default function SignupFlow({ 
@@ -22,7 +49,8 @@ export default function SignupFlow({
   onOpenPrivacy, 
   onShowToast,
   currentStep = "contact",
-  onStepChange 
+  onStepChange,
+  onSignupComplete
 }: SignupFlowProps) {
   const [step, setStep] = useState<SignupStep>(currentStep as SignupStep)
   const [contact, setContact] = useState("")
@@ -40,6 +68,9 @@ export default function SignupFlow({
   const [loading, setLoading] = useState(false)
   const [resendTimer, setResendTimer] = useState(0)
   const [phoneError, setPhoneError] = useState("")
+  const [registrationId, setRegistrationId] = useState<string | null>(null)
+  const [userId, setUserId] = useState<number | null>(null)
+  const [authToken, setAuthTokenState] = useState<string | null>(null)
 
   // Sync with parent component step
   useEffect(() => {
@@ -60,18 +91,184 @@ export default function SignupFlow({
     { value: "male", label: "Male" },
     { value: "female", label: "Female" },
     { value: "other", label: "Other" },
-    { value: "prefer-not-to-say", label: "Prefer not to say" }
+    { value: "prefer_not_to_say", label: "Prefer not to say" }
   ]
 
+  // Send OTP API Call
+  const sendOTP = async (contactInfo: string, method: 'email' | 'phone' | 'whatsapp') => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/auth/mv1001sendotp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contact: contactInfo,
+          method: method
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to send OTP')
+      }
+
+      setRegistrationId(data.data.registrationId)
+      onShowToast("success", data.message || "OTP sent successfully")
+      
+      // In development, show OTP in console
+      if (process.env.NODE_ENV === 'development' && data.data.otp) {
+        console.log(`Development OTP: ${data.data.otp}`)
+      }
+      
+      return { success: true, data }
+    } catch (error: any) {
+      onShowToast("error", error.message || "Failed to send OTP")
+      return { success: false, error: error.message }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Verify OTP API Call
+const verifyOTP = async (contactInfo: string, otpCode: string) => {
+  try {
+    setLoading(true);
+    const response = await fetch('/api/auth/mv1002verifyotp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contact: contactInfo,
+        otp: otpCode,
+        registrationId: registrationId ? String(registrationId) : undefined
+      })
+    });
+
+    const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to verify OTP')
+      }
+
+      // Store user data from response
+      setUserId(data.data.userId)
+      setAuthTokenState(data.data.token)
+      
+      // Store token in localStorage
+      if (data.data.token) {
+        setAuthToken(data.data.token, true)
+      }
+
+      onShowToast("success", data.message || "OTP verified successfully")
+      return { 
+        success: true, 
+        data, 
+        requiresPassword: !data.data.requiresProfileCompletion 
+      }
+    } catch (error: any) {
+      onShowToast("error", error.message || "Failed to verify OTP")
+      return { success: false, error: error.message }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Set User Password API Call (renamed to avoid conflict)
+  const setUserPassword = async (newPassword: string) => {
+    try {
+      if (!authToken) {
+        throw new Error('Authentication required')
+      }
+
+      setLoading(true)
+      const response = await fetch('/api/auth/mv1003setpassword', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          password: newPassword,
+          confirmPassword: newPassword
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to set password')
+      }
+
+      onShowToast("success", data.message || "Password set successfully")
+      return { success: true, data }
+    } catch (error: any) {
+      onShowToast("error", error.message || "Failed to set password")
+      return { success: false, error: error.message }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Complete Profile API Call
+  const completeUserProfile = async (profileData: {
+    firstName: string
+    lastName: string
+    phone?: string
+    dateOfBirth?: string
+    gender?: string
+    privacyAccepted: boolean
+  }) => {
+    try {
+      if (!authToken) {
+        throw new Error('Authentication required')
+      }
+
+      setLoading(true)
+      const response = await fetch('/api/profile/mv1004completeprofile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(profileData)
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to complete profile')
+      }
+
+      onShowToast("success", data.message || "Profile completed successfully")
+      return { success: true, data }
+    } catch (error: any) {
+      onShowToast("error", error.message || "Failed to complete profile")
+      return { success: false, error: error.message }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Handle Contact Step
-  const handleContinueContact = () => {
+  const handleContinueContact = async () => {
     if (!contact.trim()) {
       onShowToast("error", "Please enter email or phone number")
       return
     }
-    setStep("otp")
-    setResendTimer(30)
-    onShowToast("success", "OTP sent successfully")
+
+    // Determine if it's email or phone
+    const isEmail = contact.includes('@')
+    const method = isEmail ? 'email' : 'phone'
+
+    const result = await sendOTP(contact, method)
+    
+    if (result.success) {
+      setStep("otp")
+      setResendTimer(30)
+    }
   }
 
   // OTP Handlers
@@ -115,18 +312,27 @@ export default function SignupFlow({
   }
 
   // Handle OTP Verification
-  const handleVerifyOTP = () => {
+  const handleVerifyOTP = async () => {
     const otp = otpDigits.join("")
     if (!otp || otp.length !== 6) {
       onShowToast("error", "Please enter a valid 6-digit OTP")
       return
     }
-    setStep("password")
-    onShowToast("success", "OTP verified successfully")
+
+    const result = await verifyOTP(contact, otp)
+    
+    if (result.success) {
+      if (result.requiresPassword) {
+        setStep("password")
+      } else {
+        // Skip password step if not required
+        setStep("profile")
+      }
+    }
   }
 
   // Handle Password Step
-  const handleContinueToProfile = () => {
+  const handleContinueToProfile = async () => {
     if (!password.trim()) {
       onShowToast("error", "Please enter password")
       return
@@ -143,7 +349,12 @@ export default function SignupFlow({
       onShowToast("error", "Password must be at least 8 characters")
       return
     }
-    setStep("profile")
+
+    const result = await setUserPassword(password)
+    
+    if (result.success) {
+      setStep("profile")
+    }
   }
 
   // Validate phone number
@@ -167,16 +378,15 @@ export default function SignupFlow({
   }
 
   // Handle phone change with validation
-const handlePhoneChange = (value?: Value) => {
-  setPhone(value)
+  const handlePhoneChange = (value?: Value) => {
+    setPhone(value)
 
-  if (value) {
-    validatePhone(value)
-  } else {
-    setPhoneError("Phone number is required")
+    if (value) {
+      validatePhone(value)
+    } else {
+      setPhoneError("Phone number is required")
+    }
   }
-}
-
 
   // Handle Profile Submission
   const handleSubmitProfile = async () => {
@@ -189,10 +399,10 @@ const handlePhoneChange = (value?: Value) => {
       return
     }
     
-if (!phone || !validatePhone(phone)) {
-  onShowToast("error", phoneError || "Please enter a valid phone number")
-  return
-}
+    if (!phone || !validatePhone(phone)) {
+      onShowToast("error", phoneError || "Please enter a valid phone number")
+      return
+    }
     
     if (!dob) {
       onShowToast("error", "Date of birth is required")
@@ -207,21 +417,45 @@ if (!phone || !validatePhone(phone)) {
       return
     }
 
-    setLoading(true)
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+    // Convert date format if needed
+    let formattedDob = dob
+    if (dob.includes('/')) {
+      const [day, month, year] = dob.split('/')
+      formattedDob = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    }
+
+    const profileData = {
+      firstName,
+      lastName,
+      phone: phone.toString(),
+      dateOfBirth: formattedDob,
+      gender: gender === 'prefer-not-to-say' ? 'prefer_not_to_say' : gender,
+      privacyAccepted
+    }
+
+    const result = await completeUserProfile(profileData)
+    
+    if (result && result.success) {
       onShowToast("success", "Account created successfully!")
-    } catch (error) {
-      onShowToast("error", "Registration failed. Please try again.")
-    } finally {
-      setLoading(false)
+      
+      // Call parent callback if provided
+      if (onSignupComplete) {
+        onSignupComplete()
+      }
     }
   }
 
   // Resend OTP
-  const handleResendOTP = () => {
-    setResendTimer(30)
-    onShowToast("info", "OTP resent to your email/phone")
+  const handleResendOTP = async () => {
+    const isEmail = contact.includes('@')
+    const method = isEmail ? 'email' : 'phone'
+    
+    const result = await sendOTP(contact, method)
+    
+    if (result && result.success) {
+      setResendTimer(30)
+      setOtpDigits(["", "", "", "", "", ""])
+    }
   }
 
   // Handle Back Navigation
@@ -245,6 +479,25 @@ if (!phone || !validatePhone(phone)) {
     }
   }
 
+  // After successful signup in signup-flow.tsx
+const handleSignupComplete = () => {
+  // Store token
+  if (authToken) {
+    setAuthToken(authToken, true);
+  }
+  
+  // Show success message
+  onShowToast("success", "Welcome to MediVault!");
+  
+  // Force navbar to update by triggering storage event
+  window.dispatchEvent(new Event('storage'));
+  
+  // Optionally close modal or redirect
+  if (onSignupComplete) {
+    onSignupComplete();
+  }
+};
+
   // Timer for resend OTP
   useEffect(() => {
     if (resendTimer > 0) {
@@ -252,6 +505,17 @@ if (!phone || !validatePhone(phone)) {
       return () => clearTimeout(timer)
     }
   }, [resendTimer])
+
+  // Auto-submit OTP when all digits are entered
+  useEffect(() => {
+    const otp = otpDigits.join("")
+    if (otp.length === 6 && step === "otp") {
+      const verify = async () => {
+        await handleVerifyOTP()
+      }
+      verify()
+    }
+  }, [otpDigits])
 
   return (
     <div>
@@ -263,7 +527,7 @@ if (!phone || !validatePhone(phone)) {
       </h2>
       <p className="text-sm text-muted-foreground mb-8">
         {step === "contact" && "Enter your email or phone number"}
-        {step === "otp" && "Check your email/SMS for OTP"}
+        {step === "otp" && "Check your email for OTP"}
         {step === "password" && "Create a secure password"}
         {step === "profile" && "Complete your profile"}
       </p>
@@ -273,21 +537,35 @@ if (!phone || !validatePhone(phone)) {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-600 text-foreground mb-2">
-              Email or Phone Number <span className="text-red-500">*</span>
+              Email Address <span className="text-red-500">*</span>
             </label>
             <input
-              type="text"
+              type="email"
               value={contact}
               onChange={(e) => setContact(e.target.value)}
-              placeholder="you@example.com or +1234567890"
-              className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+              placeholder="you@example.com"
+              className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Currently supporting email registration only. Phone support coming soon.
+            </p>
           </div>
           <button
             onClick={handleContinueContact}
-            className="w-full bg-primary text-primary-foreground py-3 rounded-lg font-600 hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+            disabled={loading || !contact.trim() || !contact.includes('@')}
+            className="w-full bg-primary text-primary-foreground py-3 rounded-lg font-600 hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Continue <ChevronRight className="w-4 h-4" />
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Sending OTP...
+              </>
+            ) : (
+              <>
+                Continue <ChevronRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </div>
       )}
@@ -299,6 +577,9 @@ if (!phone || !validatePhone(phone)) {
             <label className="block text-sm font-600 text-foreground mb-3">
               Enter 6-Digit OTP <span className="text-red-500">*</span>
             </label>
+            <p className="text-sm text-muted-foreground mb-3">
+              Sent to: <span className="font-600">{contact}</span>
+            </p>
             <div 
               className="flex gap-2 justify-center mb-3" 
               onPaste={handleOtpPaste}
@@ -314,35 +595,42 @@ if (!phone || !validatePhone(phone)) {
                   onChange={(e) => handleOtpDigitChange(index, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(index, e)}
                   autoComplete="one-time-code"
-                  className="w-12 h-12 text-center text-2xl font-700 border-2 border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all placeholder:text-transparent"
+                  className="w-12 h-12 text-center text-2xl font-700 border-2 border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all placeholder:text-transparent disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder=" "
                   aria-label={`OTP digit ${index + 1}`}
+                  disabled={loading}
                 />
               ))}
             </div>
-            <div className="text-center">
+            <div className="text-center space-y-2">
               <button
                 onClick={handleResendOTP}
-                disabled={resendTimer > 0}
+                disabled={resendTimer > 0 || loading}
                 className="text-xs text-secondary hover:underline font-500 disabled:text-muted-foreground disabled:cursor-not-allowed"
               >
                 {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : "Resend OTP"}
               </button>
+              {loading && (
+                <div className="text-xs text-muted-foreground">
+                  Verifying OTP...
+                </div>
+              )}
             </div>
           </div>
           <div className="flex gap-3 pt-2">
             <button
               onClick={handleBack}
-              className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
+              disabled={loading}
+              className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
             <button
               onClick={handleVerifyOTP}
-              disabled={otpDigits.join("").length !== 6}
+              disabled={otpDigits.join("").length !== 6 || loading}
               className="flex-1 bg-primary text-primary-foreground py-3 rounded-lg font-600 hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Verify
+              {loading ? "Verifying..." : "Verify"}
             </button>
           </div>
         </div>
@@ -361,17 +649,22 @@ if (!phone || !validatePhone(phone)) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 8 characters"
-                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10"
+                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
               />
               <button
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 type="button"
+                disabled={loading}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Must include uppercase, lowercase, number, and special character
+            </p>
           </div>
 
           <div>
@@ -384,13 +677,15 @@ if (!phone || !validatePhone(phone)) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm your password"
-                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10"
+                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
               />
               <button
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                 type="button"
+                disabled={loading}
               >
                 {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -400,16 +695,17 @@ if (!phone || !validatePhone(phone)) {
           <div className="flex gap-3 pt-2">
             <button
               onClick={handleBack}
-              className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
+              disabled={loading}
+              className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
             <button
               onClick={handleContinueToProfile}
-              disabled={!password.trim() || !confirmPassword.trim() || password !== confirmPassword || password.length < 8}
+              disabled={!password.trim() || !confirmPassword.trim() || password !== confirmPassword || password.length < 8 || loading}
               className="flex-1 bg-primary text-primary-foreground py-3 rounded-lg font-600 hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Continue
+              {loading ? "Setting Password..." : "Continue"}
             </button>
           </div>
         </div>
@@ -428,7 +724,8 @@ if (!phone || !validatePhone(phone)) {
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="John"
-                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
               />
             </div>
             <div>
@@ -440,7 +737,8 @@ if (!phone || !validatePhone(phone)) {
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Doe"
-                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
               />
             </div>
           </div>
@@ -449,12 +747,13 @@ if (!phone || !validatePhone(phone)) {
             <label className="block text-sm font-600 text-foreground mb-2">
               Phone Number <span className="text-red-500">*</span>
             </label>
-<CustomPhoneInput
-  value={phone}
-  onChange={handlePhoneChange}
-  placeholder="Enter phone number"
-  required
-/>
+            <CustomPhoneInput
+              value={phone}
+              onChange={handlePhoneChange}
+              placeholder="Enter phone number"
+              required={true}
+              disabled={loading}
+            />
             {phoneError && (
               <p className="text-sm text-red-500 mt-1">{phoneError}</p>
             )}
@@ -469,6 +768,7 @@ if (!phone || !validatePhone(phone)) {
                 value={dob}
                 onChange={setDob}
                 placeholder="Select date"
+                disabled={loading}
               />
             </div>
 
@@ -481,7 +781,8 @@ if (!phone || !validatePhone(phone)) {
                 onChange={setGender}
                 options={genderOptions}
                 placeholder="Select gender"
-                searchable
+                searchable={true}
+                disabled={loading}
               />
             </div>
           </div>
@@ -491,11 +792,16 @@ if (!phone || !validatePhone(phone)) {
               type="checkbox"
               checked={privacyAccepted}
               onChange={(e) => setPrivacyAccepted(e.target.checked)}
-              className="w-4 h-4 mt-1 focus:ring-2 focus:ring-ring"
+              className="w-4 h-4 mt-1 focus:ring-2 focus:ring-ring disabled:opacity-50"
+              disabled={loading}
             />
             <span className="text-sm text-muted-foreground">
               I agree to the{" "}
-              <button onClick={onOpenPrivacy} className="text-secondary hover:underline font-600">
+              <button 
+                onClick={onOpenPrivacy} 
+                className="text-secondary hover:underline font-600 disabled:opacity-50 disabled:cursor-not-allowed" 
+                disabled={loading}
+              >
                 Privacy Policy
               </button>
               <span className="text-red-500"> *</span>
@@ -505,16 +811,24 @@ if (!phone || !validatePhone(phone)) {
           <div className="flex gap-3 pt-4">
             <button
               onClick={handleBack}
-              className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
+              disabled={loading}
+              className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
             <button
               onClick={handleSubmitProfile}
-              disabled={loading}
+              disabled={loading || !firstName || !lastName || !phone || !dob || !gender || !privacyAccepted}
               className="flex-1 bg-primary text-primary-foreground py-3 rounded-lg font-600 hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Creating..." : "Create Account"}
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Creating Account...
+                </>
+              ) : (
+                "Create Account"
+              )}
             </button>
           </div>
         </div>
@@ -525,7 +839,8 @@ if (!phone || !validatePhone(phone)) {
         Already have an account?{" "}
         <button
           onClick={onSwitchToLogin}
-          className="text-secondary hover:underline font-600 focus:outline-none focus:ring-2 focus:ring-ring rounded px-1"
+          className="text-secondary hover:underline font-600 focus:outline-none focus:ring-2 focus:ring-ring rounded px-1 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading}
         >
           Login
         </button>

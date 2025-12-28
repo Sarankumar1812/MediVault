@@ -20,7 +20,7 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
   const searchParams = useSearchParams()
   const [mode, setMode] = useState<"login" | "signup">(initialMode)
   const [signupStep, setSignupStep] = useState<string>("contact")
-  const [forgotPasswordStep, setForgotPasswordStep] = useState<string | null>(null)
+  const [loginStep, setLoginStep] = useState<string>("email")
 
   // Initialize from URL parameters
   useEffect(() => {
@@ -28,7 +28,6 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
     
     const modeParam = searchParams.get("mode")
     const stepParam = searchParams.get("step")
-    const flowParam = searchParams.get("flow")
     
     if (modeParam === "login" || modeParam === "signup") {
       setMode(modeParam)
@@ -38,13 +37,13 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
       setSignupStep(stepParam)
     }
     
-    if (flowParam === "forgot-password" && stepParam) {
-      setForgotPasswordStep(stepParam)
+    if (modeParam === "login" && stepParam) {
+      setLoginStep(stepParam)
     }
   }, [open, searchParams])
 
   // Update URL when mode/step changes
-  const updateUrl = (newMode: "login" | "signup", step?: string, flow?: string) => {
+  const updateUrl = (newMode: "login" | "signup", step?: string) => {
     const params = new URLSearchParams(searchParams.toString())
     params.set("mode", newMode)
     
@@ -52,12 +51,6 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
       params.set("step", step)
     } else {
       params.delete("step")
-    }
-    
-    if (flow) {
-      params.set("flow", flow)
-    } else {
-      params.delete("flow")
     }
     
     // Keep auth=true
@@ -68,9 +61,13 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
 
   const handleModeChange = (newMode: "login" | "signup") => {
     setMode(newMode)
-    setSignupStep("contact")
-    setForgotPasswordStep(null)
-    updateUrl(newMode)
+    if (newMode === "signup") {
+      setSignupStep("contact")
+      updateUrl(newMode, "contact")
+    } else {
+      setLoginStep("email")
+      updateUrl(newMode, "email")
+    }
   }
 
   const handleSignupStepChange = (step: string) => {
@@ -78,14 +75,22 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
     updateUrl("signup", step)
   }
 
-  const handleForgotPasswordStepChange = (step: string) => {
-    setForgotPasswordStep(step)
-    updateUrl("login", step, "forgot-password")
+  const handleLoginSuccess = () => {
+    onShowToast("success", "Welcome back to MediVault!")
+    onOpenChange(false)
+    // Redirect to dashboard
+    setTimeout(() => {
+      window.location.href = '/dashboard'
+    }, 1000)
   }
 
-  const handleBackToLogin = () => {
-    setForgotPasswordStep(null)
-    updateUrl("login")
+  const handleSignupComplete = () => {
+    onShowToast("success", "Welcome to MediVault!")
+    onOpenChange(false)
+    // Redirect to dashboard
+    setTimeout(() => {
+      window.location.href = '/dashboard'
+    }, 1000)
   }
 
   const handleEscapeKey = (e: React.KeyboardEvent) => {
@@ -129,14 +134,13 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
                 onShowToast={onShowToast}
                 currentStep={signupStep}
                 onStepChange={handleSignupStepChange}
+                onSignupComplete={handleSignupComplete}
               />
             ) : (
               <LoginFlow 
                 onSwitchToSignup={() => handleModeChange("signup")} 
                 onShowToast={onShowToast}
-                forgotPasswordStep={forgotPasswordStep}
-                onForgotPasswordStepChange={handleForgotPasswordStepChange}
-                onBackToLogin={handleBackToLogin}
+                onLoginSuccess={handleLoginSuccess}
               />
             )}
           </div>

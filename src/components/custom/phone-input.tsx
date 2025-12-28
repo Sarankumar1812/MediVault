@@ -11,9 +11,16 @@ interface CustomPhoneInputProps {
   onChange: (value?: Value) => void
   placeholder?: string
   required?: boolean
+  disabled?: boolean // Added disabled prop
 }
 
-export default function CustomPhoneInput({ value, onChange, placeholder = "Phone number", required = false }: CustomPhoneInputProps) {
+export default function CustomPhoneInput({ 
+  value, 
+  onChange, 
+  placeholder = "Phone number", 
+  required = false,
+  disabled = false // Default to false
+}: CustomPhoneInputProps) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -29,26 +36,44 @@ export default function CustomPhoneInput({ value, onChange, placeholder = "Phone
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // Handle disabled state - don't open when disabled
+  const handleCountryFocus = () => {
+    if (!disabled) {
+      setIsOpen(true)
+    }
+  }
+
+  const handleCountryBlur = () => {
+    if (!disabled) {
+      setIsOpen(false)
+    }
+  }
+
   return (
     <div className="relative" ref={containerRef}>
-      <div className={`phone-input-wrapper border border-border rounded-lg focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:border-transparent transition-all ${isOpen ? 'ring-2 ring-ring border-transparent' : ''}`}>
+      <div 
+        className={`phone-input-wrapper border border-border rounded-lg focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:border-transparent transition-all ${isOpen ? 'ring-2 ring-ring border-transparent' : ''} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
         <PhoneInput
           international
           defaultCountry="IN"
           value={value}
           onChange={onChange}
           placeholder={placeholder}
+          disabled={disabled} // Pass disabled to PhoneInput
           countrySelectProps={{
             className: "country-select",
+            disabled: disabled, // Disable country select when component is disabled
             arrowComponent: () => (
-              <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+              <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${isOpen ? "rotate-180" : ""} ${disabled ? 'opacity-50' : ''}`} />
             ),
-            onFocus: () => setIsOpen(true),
-            onBlur: () => setIsOpen(false),
+            onFocus: handleCountryFocus,
+            onBlur: handleCountryBlur,
           }}
           inputProps={{
             className: "phone-input",
             required,
+            disabled, // Pass disabled to input
           }}
         />
       </div>
@@ -75,6 +100,7 @@ export default function CustomPhoneInput({ value, onChange, placeholder = "Phone
           background: white;
           border-right: 1px solid hsl(var(--border));
           min-width: 120px;
+          ${disabled ? 'opacity: 0.5; cursor: not-allowed;' : ''}
         }
 
         .phone-input-wrapper .PhoneInputCountrySelect {
@@ -86,7 +112,7 @@ export default function CustomPhoneInput({ value, onChange, placeholder = "Phone
           z-index: 1;
           border: 0;
           opacity: 0;
-          cursor: pointer;
+          cursor: ${disabled ? 'not-allowed' : 'pointer'};
         }
 
         .phone-input-wrapper .PhoneInputCountrySelect:focus + .PhoneInputCountryIconArrow {
@@ -117,6 +143,7 @@ export default function CustomPhoneInput({ value, onChange, placeholder = "Phone
           font-size: 1rem;
           background: white;
           width: 100%;
+          ${disabled ? 'cursor: not-allowed; background-color: hsl(var(--muted));' : ''}
         }
 
         .phone-input-wrapper .PhoneInputInput:focus {
