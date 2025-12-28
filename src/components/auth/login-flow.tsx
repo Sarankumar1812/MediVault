@@ -7,14 +7,30 @@ import { Eye, EyeOff, ChevronLeft } from "lucide-react"
 interface LoginFlowProps {
   onSwitchToSignup: () => void
   onShowToast: (type: "success" | "error" | "warning" | "info", message: string) => void
+  forgotPasswordStep?: string | null
+  onForgotPasswordStepChange?: (step: string) => void
+  onBackToLogin?: () => void
 }
 
-export default function LoginFlow({ onSwitchToSignup, onShowToast }: LoginFlowProps) {
-  const [showForgotPassword, setShowForgotPassword] = useState(false)
+export default function LoginFlow({ 
+  onSwitchToSignup, 
+  onShowToast,
+  forgotPasswordStep = null,
+  onForgotPasswordStepChange,
+  onBackToLogin 
+}: LoginFlowProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // Sync with parent component step
+  useEffect(() => {
+    // If we're in forgot password flow, notify parent
+    if (forgotPasswordStep && onForgotPasswordStepChange) {
+      onForgotPasswordStepChange(forgotPasswordStep)
+    }
+  }, [forgotPasswordStep])
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -39,8 +55,24 @@ export default function LoginFlow({ onSwitchToSignup, onShowToast }: LoginFlowPr
     }
   }
 
-  if (showForgotPassword) {
-    return <ForgotPasswordFlow onBackToLogin={() => setShowForgotPassword(false)} onShowToast={onShowToast} />
+  // Show forgot password flow
+  const handleForgotPassword = () => {
+    if (onForgotPasswordStepChange) {
+      onForgotPasswordStepChange("email")
+    }
+  }
+
+  if (forgotPasswordStep) {
+    return <ForgotPasswordFlow 
+      onBackToLogin={onBackToLogin || (() => {
+        if (onForgotPasswordStepChange) {
+          onForgotPasswordStepChange("")
+        }
+      })} 
+      onShowToast={onShowToast}
+      currentStep={forgotPasswordStep}
+      onStepChange={onForgotPasswordStepChange}
+    />
   }
 
   return (
@@ -92,7 +124,7 @@ export default function LoginFlow({ onSwitchToSignup, onShowToast }: LoginFlowPr
         {/* Forgot Password Link */}
         <div className="flex justify-end">
           <button
-            onClick={() => setShowForgotPassword(true)}
+            onClick={handleForgotPassword}
             className="text-sm text-secondary hover:underline font-500"
           >
             Forgot Password?
@@ -123,18 +155,20 @@ export default function LoginFlow({ onSwitchToSignup, onShowToast }: LoginFlowPr
   )
 }
 
-// Forgot Password Flow Component
+// Forgot Password Flow Component (with URL sync)
 interface ForgotPasswordFlowProps {
   onBackToLogin: () => void
   onShowToast: (type: "success" | "error" | "warning" | "info", message: string) => void
+  currentStep?: string
+  onStepChange?: (step: string) => void
 }
 
 type ForgotPasswordStep = "email" | "otp" | "new-password"
 
-function ForgotPasswordFlow({ onBackToLogin, onShowToast }: ForgotPasswordFlowProps) {
-  const [step, setStep] = useState<ForgotPasswordStep>("email")
+function ForgotPasswordFlow({ onBackToLogin, onShowToast, currentStep = "email", onStepChange }: ForgotPasswordFlowProps) {
+  const [step, setStep] = useState<ForgotPasswordStep>(currentStep as ForgotPasswordStep)
   const [email, setEmail] = useState("")
-  const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""])
+  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""])
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -143,41 +177,47 @@ function ForgotPasswordFlow({ onBackToLogin, onShowToast }: ForgotPasswordFlowPr
   const [resendTimer, setResendTimer] = useState(0)
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // OTP Handlers
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d?$/.test(value)) return
+  // Sync with parent component step
+  useEffect(() => {
+    if (currentStep && currentStep !== step) {
+      setStep(currentStep as ForgotPasswordStep)
+    }
+  }, [currentStep])
 
-    const newOtp = [...otpDigits]
-    newOtp[index] = value
-    setOtpDigits(newOtp)
+  // Notify parent about step changes
+  useEffect(() => {
+    if (onStepChange) {
+      onStepChange(step)
+    }
+  }, [step, onStepChange])
+
+  // OTP Handlers
+  const handleOtpDigitChange = (index: number, value: string) => {
+    const newDigits = [...otpDigits]
+    newDigits[index] = value.replace(/\D/g, "").slice(0, 1)
+    setOtpDigits(newDigits)
 
     if (value && index < 5) {
-      otpInputRefs.current[index + 1]?.focus()
+      const nextInput = document.getElementById(`otp-${index + 1}`)
+      nextInput?.focus()
     }
   }
 
   const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
-      otpInputRefs.current[index - 1]?.focus()
+      const prevInput = document.getElementById(`otp-${index - 1}`)
+      prevInput?.focus()
     }
   }
 
-  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
-    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
-    const newOtp = [...otpDigits]
-
-    for (let i = 0; i < pastedData.length; i++) {
-      newOtp[i] = pastedData[i]
-    }
-
-    setOtpDigits(newOtp)
-
-    if (pastedData.length === 6) {
-      otpInputRefs.current[5]?.blur()
-    } else if (pastedData.length > 0) {
-      otpInputRefs.current[Math.min(pastedData.length, 5)]?.focus()
-    }
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
+    const newDigits = [...otpDigits]
+    text.split("").forEach((digit, index) => {
+      if (index < 6) newDigits[index] = digit
+    })
+    setOtpDigits(newDigits)
   }
 
   // Timer for resend OTP
@@ -269,22 +309,25 @@ function ForgotPasswordFlow({ onBackToLogin, onShowToast }: ForgotPasswordFlowPr
     onShowToast("info", "OTP resent to your email")
   }
 
+  // Handle Back Navigation
+  const handleBack = () => {
+    if (step === "email") {
+      onBackToLogin()
+    } else if (step === "otp") {
+      setStep("email")
+      setOtpDigits(["", "", "", "", "", ""])
+    } else {
+      setStep("otp")
+      setNewPassword("")
+      setConfirmPassword("")
+    }
+  }
+
   return (
     <div>
       {/* Back Button */}
       <button
-        onClick={() => {
-          if (step === "email") {
-            onBackToLogin()
-          } else if (step === "otp") {
-            setStep("email")
-            setOtpDigits(["", "", "", "", "", ""])
-          } else {
-            setStep("otp")
-            setNewPassword("")
-            setConfirmPassword("")
-          }
-        }}
+        onClick={handleBack}
         className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors"
       >
         <ChevronLeft className="w-4 h-4" />
@@ -336,24 +379,19 @@ function ForgotPasswordFlow({ onBackToLogin, onShowToast }: ForgotPasswordFlowPr
               <label className="block text-sm font-600 text-foreground mb-3">
                 Enter 6-Digit OTP <span className="text-red-500">*</span>
               </label>
-              <div className="flex gap-2 justify-center mb-2">
+              <div className="flex gap-2 justify-center mb-4" onPaste={handleOtpPaste}>
                 {otpDigits.map((digit, index) => (
                   <input
                     key={index}
-                    ref={(el) => {
-                      otpInputRefs.current[index] = el
-                    }}
+                    id={`otp-${index}`}
                     type="text"
                     inputMode="numeric"
-                    maxLength={1}
                     value={digit}
-                    onChange={(e) => handleOtpChange(index, e.target.value)}
+                    onChange={(e) => handleOtpDigitChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                    onPaste={index === 0 ? handleOtpPaste : undefined}
+                    className="w-12 h-14 border-2 border-border rounded-lg text-center text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-ring transition-all placeholder:text-transparent"
                     placeholder=" "
-                    autoComplete="one-time-code"
-                    className="w-12 h-12 text-center text-2xl font-700 border-2 border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent placeholder:text-transparent"
-                    aria-label={`OTP digit ${index + 1}`}
+                    maxLength={1}
                   />
                 ))}
               </div>
@@ -389,7 +427,7 @@ function ForgotPasswordFlow({ onBackToLogin, onShowToast }: ForgotPasswordFlowPr
                   type={showNewPassword ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="At least 8 characters"
                   className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10"
                 />
                 <button
@@ -412,7 +450,7 @@ function ForgotPasswordFlow({ onBackToLogin, onShowToast }: ForgotPasswordFlowPr
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Confirm password"
                   className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10"
                 />
                 <button

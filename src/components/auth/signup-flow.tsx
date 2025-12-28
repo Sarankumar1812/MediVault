@@ -1,7 +1,11 @@
 "use client"
 
-import { useState,useEffect } from "react"
+import { useState, useEffect } from "react"
 import { ChevronRight, ChevronLeft, Eye, EyeOff } from "lucide-react"
+import type { Value } from "react-phone-number-input"
+import DatePicker from "../custom/date-picker"
+import Dropdown from "../custom/dropdown"
+import CustomPhoneInput from "../custom/phone-input"
 
 type SignupStep = "contact" | "otp" | "password" | "profile"
 
@@ -9,10 +13,18 @@ interface SignupFlowProps {
   onSwitchToLogin: () => void
   onOpenPrivacy: () => void
   onShowToast: (type: "success" | "error" | "warning" | "info", message: string) => void
+  currentStep?: string
+  onStepChange?: (step: string) => void
 }
 
-export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast }: SignupFlowProps) {
-  const [step, setStep] = useState<SignupStep>("contact")
+export default function SignupFlow({ 
+  onSwitchToLogin, 
+  onOpenPrivacy, 
+  onShowToast,
+  currentStep = "contact",
+  onStepChange 
+}: SignupFlowProps) {
+  const [step, setStep] = useState<SignupStep>(currentStep as SignupStep)
   const [contact, setContact] = useState("")
   const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""])
   const [password, setPassword] = useState("")
@@ -21,12 +33,35 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
-  const [phone, setPhone] = useState("")
+  const [phone, setPhone] = useState<Value | undefined>()
   const [dob, setDob] = useState("")
   const [gender, setGender] = useState("")
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [resendTimer, setResendTimer] = useState(0)
+  const [phoneError, setPhoneError] = useState("")
+
+  // Sync with parent component step
+  useEffect(() => {
+    if (currentStep && currentStep !== step) {
+      setStep(currentStep as SignupStep)
+    }
+  }, [currentStep])
+
+  // Notify parent about step changes
+  useEffect(() => {
+    if (onStepChange) {
+      onStepChange(step)
+    }
+  }, [step, onStepChange])
+
+  // Gender options for dropdown
+  const genderOptions = [
+    { value: "male", label: "Male" },
+    { value: "female", label: "Female" },
+    { value: "other", label: "Other" },
+    { value: "prefer-not-to-say", label: "Prefer not to say" }
+  ]
 
   // Handle Contact Step
   const handleContinueContact = () => {
@@ -37,56 +72,6 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
     setStep("otp")
     setResendTimer(30)
     onShowToast("success", "OTP sent successfully")
-  }
-
-  // Handle OTP Verification
-  const handleVerifyOTP = () => {
-    const otp = otpDigits.join("")
-    if (!otp || otp.length !== 6) {
-      onShowToast("error", "Please enter a valid 6-digit OTP")
-      return
-    }
-    setStep("password")
-    onShowToast("success", "OTP verified successfully")
-  }
-
-  // Handle Password Step
-  const handleContinueToProfile = () => {
-    if (!password.trim()) {
-      onShowToast("error", "Please enter password")
-      return
-    }
-    if (!confirmPassword.trim()) {
-      onShowToast("error", "Please confirm your password")
-      return
-    }
-    if (password !== confirmPassword) {
-      onShowToast("error", "Passwords do not match")
-      return
-    }
-    if (password.length < 8) {
-      onShowToast("error", "Password must be at least 8 characters")
-      return
-    }
-    setStep("profile")
-  }
-
-  // Handle Profile Submission
-  const handleSubmitProfile = async () => {
-    if (!firstName.trim() || !lastName.trim() || !phone.trim() || !dob || !gender || !privacyAccepted) {
-      onShowToast("error", "Please complete all mandatory fields")
-      return
-    }
-
-    setLoading(true)
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      onShowToast("success", "Account created successfully!")
-    } catch (error) {
-      onShowToast("error", "Registration failed. Please try again.")
-    } finally {
-      setLoading(false)
-    }
   }
 
   // OTP Handlers
@@ -129,10 +114,135 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
     }
   }
 
+  // Handle OTP Verification
+  const handleVerifyOTP = () => {
+    const otp = otpDigits.join("")
+    if (!otp || otp.length !== 6) {
+      onShowToast("error", "Please enter a valid 6-digit OTP")
+      return
+    }
+    setStep("password")
+    onShowToast("success", "OTP verified successfully")
+  }
+
+  // Handle Password Step
+  const handleContinueToProfile = () => {
+    if (!password.trim()) {
+      onShowToast("error", "Please enter password")
+      return
+    }
+    if (!confirmPassword.trim()) {
+      onShowToast("error", "Please confirm your password")
+      return
+    }
+    if (password !== confirmPassword) {
+      onShowToast("error", "Passwords do not match")
+      return
+    }
+    if (password.length < 8) {
+      onShowToast("error", "Password must be at least 8 characters")
+      return
+    }
+    setStep("profile")
+  }
+
+  // Validate phone number
+  const validatePhone = (value: Value) => {
+    setPhoneError("")
+    
+    if (!value) {
+      setPhoneError("Phone number is required")
+      return false
+    }
+
+    const phoneStr = value.toString()
+    const digitsOnly = phoneStr.replace(/[^\d]/g, "")
+    
+    if (digitsOnly.length < 8) {
+      setPhoneError("Please enter a valid phone number")
+      return false
+    }
+
+    return true
+  }
+
+  // Handle phone change with validation
+const handlePhoneChange = (value?: Value) => {
+  setPhone(value)
+
+  if (value) {
+    validatePhone(value)
+  } else {
+    setPhoneError("Phone number is required")
+  }
+}
+
+
+  // Handle Profile Submission
+  const handleSubmitProfile = async () => {
+    if (!firstName.trim()) {
+      onShowToast("error", "First name is required")
+      return
+    }
+    if (!lastName.trim()) {
+      onShowToast("error", "Last name is required")
+      return
+    }
+    
+if (!phone || !validatePhone(phone)) {
+  onShowToast("error", phoneError || "Please enter a valid phone number")
+  return
+}
+    
+    if (!dob) {
+      onShowToast("error", "Date of birth is required")
+      return
+    }
+    if (!gender) {
+      onShowToast("error", "Gender is required")
+      return
+    }
+    if (!privacyAccepted) {
+      onShowToast("error", "Please accept the privacy policy")
+      return
+    }
+
+    setLoading(true)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      onShowToast("success", "Account created successfully!")
+    } catch (error) {
+      onShowToast("error", "Registration failed. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Resend OTP
   const handleResendOTP = () => {
     setResendTimer(30)
     onShowToast("info", "OTP resent to your email/phone")
+  }
+
+  // Handle Back Navigation
+  const handleBack = () => {
+    if (step === "otp") {
+      setStep("contact")
+      setOtpDigits(["", "", "", "", "", ""])
+    } else if (step === "password") {
+      setStep("otp")
+      setPassword("")
+      setConfirmPassword("")
+    } else if (step === "profile") {
+      setStep("password")
+      setFirstName("")
+      setLastName("")
+      setPhone(undefined)
+      setPhoneError("")
+      setDob("")
+      setGender("")
+      setPrivacyAccepted(false)
+    }
   }
 
   // Timer for resend OTP
@@ -222,10 +332,7 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
           </div>
           <div className="flex gap-3 pt-2">
             <button
-              onClick={() => {
-                setStep("contact")
-                setOtpDigits(["", "", "", "", "", ""])
-              }}
+              onClick={handleBack}
               className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
             >
               <ChevronLeft className="w-4 h-4" /> Back
@@ -292,11 +399,7 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
 
           <div className="flex gap-3 pt-2">
             <button
-              onClick={() => {
-                setStep("otp")
-                setPassword("")
-                setConfirmPassword("")
-              }}
+              onClick={handleBack}
               className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
             >
               <ChevronLeft className="w-4 h-4" /> Back
@@ -346,13 +449,15 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
             <label className="block text-sm font-600 text-foreground mb-2">
               Phone Number <span className="text-red-500">*</span>
             </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+1 (555) 000-0000"
-              className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+<CustomPhoneInput
+  value={phone}
+  onChange={handlePhoneChange}
+  placeholder="Enter phone number"
+  required
+/>
+            {phoneError && (
+              <p className="text-sm text-red-500 mt-1">{phoneError}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -360,11 +465,10 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
               <label className="block text-sm font-600 text-foreground mb-2">
                 Date of Birth <span className="text-red-500">*</span>
               </label>
-              <input
-                type="date"
+              <DatePicker
                 value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={setDob}
+                placeholder="Select date"
               />
             </div>
 
@@ -372,17 +476,13 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
               <label className="block text-sm font-600 text-foreground mb-2">
                 Gender <span className="text-red-500">*</span>
               </label>
-              <select
+              <Dropdown
                 value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring bg-white"
-              >
-                <option value="">Select gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-                <option value="prefer-not-to-say">Prefer not to say</option>
-              </select>
+                onChange={setGender}
+                options={genderOptions}
+                placeholder="Select gender"
+                searchable
+              />
             </div>
           </div>
 
@@ -404,15 +504,7 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
 
           <div className="flex gap-3 pt-4">
             <button
-              onClick={() => {
-                setStep("password")
-                setFirstName("")
-                setLastName("")
-                setPhone("")
-                setDob("")
-                setGender("")
-                setPrivacyAccepted(false)
-              }}
+              onClick={handleBack}
               className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
             >
               <ChevronLeft className="w-4 h-4" /> Back
