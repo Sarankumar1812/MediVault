@@ -9,10 +9,10 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-3 mb-4">
               <Image
-                src="/medivault_logo.png"
+                src="/mv_logo_bg.jpg"
                 alt="MediVault Logo"
-                width={36}
-                height={36}
+                width={40}
+                height={40}
                 className="object-contain"
               />
               <span className="font-800 text-xl">MediVault</span>

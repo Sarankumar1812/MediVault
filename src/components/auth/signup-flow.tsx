@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { ChevronRight, ChevronLeft } from "lucide-react"
+import { useState,useEffect } from "react"
+import { ChevronRight, ChevronLeft, Eye, EyeOff } from "lucide-react"
 
-type SignupStep = "contact" | "otp" | "profile"
+type SignupStep = "contact" | "otp" | "password" | "profile"
 
 interface SignupFlowProps {
   onSwitchToLogin: () => void
@@ -15,6 +15,10 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
   const [step, setStep] = useState<SignupStep>("contact")
   const [contact, setContact] = useState("")
   const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""])
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [phone, setPhone] = useState("")
@@ -22,26 +26,52 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
   const [gender, setGender] = useState("")
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [resendTimer, setResendTimer] = useState(0)
 
+  // Handle Contact Step
   const handleContinueContact = () => {
     if (!contact.trim()) {
       onShowToast("error", "Please enter email or phone number")
       return
     }
     setStep("otp")
+    setResendTimer(30)
     onShowToast("success", "OTP sent successfully")
   }
 
+  // Handle OTP Verification
   const handleVerifyOTP = () => {
     const otp = otpDigits.join("")
     if (!otp || otp.length !== 6) {
-      onShowToast("error", "Please enter a valid OTP")
+      onShowToast("error", "Please enter a valid 6-digit OTP")
       return
     }
-    setStep("profile")
+    setStep("password")
     onShowToast("success", "OTP verified successfully")
   }
 
+  // Handle Password Step
+  const handleContinueToProfile = () => {
+    if (!password.trim()) {
+      onShowToast("error", "Please enter password")
+      return
+    }
+    if (!confirmPassword.trim()) {
+      onShowToast("error", "Please confirm your password")
+      return
+    }
+    if (password !== confirmPassword) {
+      onShowToast("error", "Passwords do not match")
+      return
+    }
+    if (password.length < 8) {
+      onShowToast("error", "Password must be at least 8 characters")
+      return
+    }
+    setStep("profile")
+  }
+
+  // Handle Profile Submission
   const handleSubmitProfile = async () => {
     if (!firstName.trim() || !lastName.trim() || !phone.trim() || !dob || !gender || !privacyAccepted) {
       onShowToast("error", "Please complete all mandatory fields")
@@ -59,29 +89,76 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
     }
   }
 
-  const otp = otpDigits.join("")
-
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d?$/.test(value)) return
+  // OTP Handlers
+  const handleOtpDigitChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, "").slice(0, 1)
     const newOtp = [...otpDigits]
-    newOtp[index] = value
+    newOtp[index] = digit
     setOtpDigits(newOtp)
+
+    if (digit && index < 5) {
+      const nextInput = document.getElementById(`otp-${index + 1}`)
+      nextInput?.focus()
+    }
   }
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-${index - 1}`)
+      prevInput?.focus()
+    }
+  }
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const pastedText = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
+    const newDigits = [...otpDigits]
+    
+    pastedText.split("").forEach((digit, index) => {
+      if (index < 6) newDigits[index] = digit
+    })
+    
+    setOtpDigits(newDigits)
+    
+    if (pastedText.length < 6) {
+      const nextInput = document.getElementById(`otp-${pastedText.length}`)
+      nextInput?.focus()
+    } else {
+      const lastInput = document.getElementById(`otp-5`)
+      lastInput?.focus()
+    }
+  }
+
+  // Resend OTP
+  const handleResendOTP = () => {
+    setResendTimer(30)
+    onShowToast("info", "OTP resent to your email/phone")
+  }
+
+  // Timer for resend OTP
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [resendTimer])
 
   return (
     <div>
       <h2 id="auth-modal-title" className="text-2xl font-700 text-primary mb-2">
         {step === "contact" && "Create Account"}
         {step === "otp" && "Verify OTP"}
+        {step === "password" && "Create Password"}
         {step === "profile" && "Profile Details"}
       </h2>
       <p className="text-sm text-muted-foreground mb-8">
         {step === "contact" && "Enter your email or phone number"}
         {step === "otp" && "Check your email/SMS for OTP"}
+        {step === "password" && "Create a secure password"}
         {step === "profile" && "Complete your profile"}
       </p>
 
-      {/* Contact Step */}
+      {/* Step 1: Contact Information */}
       {step === "contact" && (
         <div className="space-y-4">
           <div>
@@ -105,36 +182,44 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
         </div>
       )}
 
-      {/* OTP Step */}
+      {/* Step 2: OTP Verification */}
       {step === "otp" && (
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-600 text-foreground mb-3">
               Enter 6-Digit OTP <span className="text-red-500">*</span>
             </label>
-            <div className="flex gap-2 justify-center mb-3">
+            <div 
+              className="flex gap-2 justify-center mb-3" 
+              onPaste={handleOtpPaste}
+            >
               {otpDigits.map((digit, index) => (
                 <input
                   key={index}
+                  id={`otp-${index}`}
                   type="text"
                   inputMode="numeric"
                   maxLength={1}
                   value={digit}
-                  onChange={(e) => handleOtpChange(index, e.target.value)}
-                  placeholder="•"
+                  onChange={(e) => handleOtpDigitChange(index, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(index, e)}
                   autoComplete="one-time-code"
-                  className="w-12 h-12 text-center text-2xl font-700 border-2 border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                  className="w-12 h-12 text-center text-2xl font-700 border-2 border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all placeholder:text-transparent"
+                  placeholder=" "
+                  aria-label={`OTP digit ${index + 1}`}
                 />
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">You can copy and paste the code</p>
+            <div className="text-center">
+              <button
+                onClick={handleResendOTP}
+                disabled={resendTimer > 0}
+                className="text-xs text-secondary hover:underline font-500 disabled:text-muted-foreground disabled:cursor-not-allowed"
+              >
+                {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : "Resend OTP"}
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => onShowToast("info", "OTP resent to your email/phone")}
-            className="text-sm text-secondary hover:underline font-500 w-full text-center"
-          >
-            Resend OTP
-          </button>
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => {
@@ -147,7 +232,7 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
             </button>
             <button
               onClick={handleVerifyOTP}
-              disabled={otp.length !== 6}
+              disabled={otpDigits.join("").length !== 6}
               className="flex-1 bg-primary text-primary-foreground py-3 rounded-lg font-600 hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Verify
@@ -156,7 +241,78 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
         </div>
       )}
 
-      {/* Profile Step */}
+      {/* Step 3: Password Creation */}
+      {step === "password" && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-600 text-foreground mb-2">
+              Create Password <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10"
+              />
+              <button
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                type="button"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-600 text-foreground mb-2">
+              Confirm Password <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm your password"
+                className="w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring pr-10"
+              />
+              <button
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                type="button"
+              >
+                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => {
+                setStep("otp")
+                setPassword("")
+                setConfirmPassword("")
+              }}
+              className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back
+            </button>
+            <button
+              onClick={handleContinueToProfile}
+              disabled={!password.trim() || !confirmPassword.trim() || password !== confirmPassword || password.length < 8}
+              className="flex-1 bg-primary text-primary-foreground py-3 rounded-lg font-600 hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Profile Details */}
       {step === "profile" && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -249,8 +405,13 @@ export default function SignupFlow({ onSwitchToLogin, onOpenPrivacy, onShowToast
           <div className="flex gap-3 pt-4">
             <button
               onClick={() => {
-                setStep("otp")
-                setOtpDigits(["", "", "", "", "", ""])
+                setStep("password")
+                setFirstName("")
+                setLastName("")
+                setPhone("")
+                setDob("")
+                setGender("")
+                setPrivacyAccepted(false)
               }}
               className="flex-1 border border-border text-foreground py-3 rounded-lg font-600 hover:bg-muted transition-colors flex items-center justify-center gap-2"
             >
