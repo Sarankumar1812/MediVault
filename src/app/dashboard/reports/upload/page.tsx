@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import UploadReportClient from "./UploadReportClient"
+import UploadReportClient from "./UploadReport"
 
 export const metadata: Metadata = {
   title: "Upload Medical Report | MediVault",
