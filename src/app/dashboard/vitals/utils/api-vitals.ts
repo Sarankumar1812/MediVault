@@ -1,4 +1,4 @@
-// app/dashboard/vitals/utils/api-vitals.ts
+// app/dashboard/vitals/utils/api-vitals.ts - Add debugging
 import { getAuthToken } from '@/lib/auth-client';
 
 export type VitalType = 
@@ -15,21 +15,6 @@ export interface VitalEntry {
   unit: string;
   note?: string;
   recordedAt: string;
-}
-
-export interface VitalStatsResponse {
-  stats: {
-    avg: number;
-    min: number;
-    max: number;
-    count: number;
-  };
-  recent: Array<{
-    id: string;
-    value: string;
-    unit: string;
-    recordedAt: string;
-  }>;
 }
 
 export interface GetVitalStatsResponse {
@@ -55,6 +40,8 @@ export async function addVital(vitalData: any): Promise<VitalEntry> {
     throw new Error('Authentication required');
   }
 
+  console.log('Frontend: Sending vital data:', vitalData);
+
   const response = await fetch('/api/vitals/mv2001addvital', {
     method: 'POST',
     headers: {
@@ -64,10 +51,18 @@ export async function addVital(vitalData: any): Promise<VitalEntry> {
     body: JSON.stringify(vitalData)
   });
 
+  console.log('Frontend: Response status:', response.status);
+
   const data = await response.json();
+  console.log('Frontend: Response data:', data);
 
   if (!response.ok) {
-    throw new Error(data.message || 'Failed to add vital');
+    if (data.errors) {
+      // Format validation errors nicely
+      const errorMessages = Object.values(data.errors).flat().join(', ');
+      throw new Error(`Validation failed: ${errorMessages}`);
+    }
+    throw new Error(data.message || `Failed to add vital (${response.status})`);
   }
 
   return data.data.vital;
@@ -91,7 +86,10 @@ export async function getVitals(
   if (endDate) params.append('endDate', endDate);
   if (limit) params.append('limit', limit.toString());
 
-  const response = await fetch(`/api/vitals/mv2002getvitals?${params.toString()}`, {
+  const url = `/api/vitals/mv2002getvitals?${params.toString()}`;
+  console.log('Frontend: Fetching vitals from:', url);
+
+  const response = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${token}`
     }
@@ -116,7 +114,10 @@ export async function getVitalStats(
     throw new Error('Authentication required');
   }
 
-  const response = await fetch(`/api/vitals/mv2003getvitalstats?type=${type}&days=${days}`, {
+  const url = `/api/vitals/mv2003getvitalstats?type=${type}&days=${days}`;
+  console.log('Frontend: Fetching stats from:', url);
+
+  const response = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${token}`
     }

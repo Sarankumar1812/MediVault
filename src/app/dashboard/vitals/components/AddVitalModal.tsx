@@ -1,4 +1,4 @@
-// app/dashboard/vitals/components/AddVitalModal.tsx - Updated
+// app/dashboard/vitals/components/AddVitalModal.tsx - Fix data formatting
 "use client"
 
 import { useState } from "react"
@@ -77,14 +77,32 @@ export default function AddVitalModal({
   const config = VITALS.find((v) => v.type === type)
 
   const handleSave = async () => {
-    if (!type || !config || !value) return
+    if (!type || !config || !value) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill all required fields",
+        variant: "destructive",
+      })
+      return
+    }
 
     setIsLoading(true)
     
     try {
+      // Ensure proper ISO date format
+      let recordedAt = new Date(dateTime).toISOString()
+      
+      // If datetime-local doesn't include timezone, assume local time
+      if (dateTime.length === 16) { // YYYY-MM-DDTHH:MM format
+        const localDate = new Date(dateTime)
+        recordedAt = localDate.toISOString()
+      }
+
+      console.log('Sending vital data with recordedAt:', recordedAt)
+
       let vitalData: any = {
         type,
-        recordedAt: new Date(dateTime).toISOString(),
+        recordedAt,
       };
 
       if (note.trim()) {
@@ -95,11 +113,15 @@ export default function AddVitalModal({
         if (!diastolic) {
           throw new Error('Diastolic value is required for blood pressure');
         }
-        vitalData.systolic = Number(value);
-        vitalData.diastolic = Number(diastolic);
+        // Convert to numbers
+        vitalData.systolic = parseFloat(value);
+        vitalData.diastolic = parseFloat(diastolic);
       } else {
-        vitalData.value = Number(value);
+        // Convert to number
+        vitalData.value = parseFloat(value);
       }
+
+      console.log('Vital data to send:', vitalData)
 
       await addVital(vitalData);
 
@@ -122,6 +144,7 @@ export default function AddVitalModal({
       }
 
     } catch (error: any) {
+      console.error('Add vital error:', error)
       toast({
         title: "Error",
         description: error.message || "Failed to add vital",
@@ -132,8 +155,21 @@ export default function AddVitalModal({
     }
   }
 
+  const resetForm = () => {
+    setType(null);
+    setValue("");
+    setDiastolic("");
+    setNote("");
+    setDateTime(new Date().toISOString().slice(0, 16));
+  }
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Add Vital</DialogTitle>
@@ -164,6 +200,7 @@ export default function AddVitalModal({
               </Label>
               <Input
                 type="number"
+                step="0.1"
                 placeholder={`Enter ${config.label.toLowerCase()}`}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
@@ -177,6 +214,7 @@ export default function AddVitalModal({
                 <Label>Diastolic ({config.unit}) *</Label>
                 <Input
                   type="number"
+                  step="0.1"
                   placeholder="Enter diastolic value"
                   value={diastolic}
                   onChange={(e) => setDiastolic(e.target.value)}
@@ -215,7 +253,7 @@ export default function AddVitalModal({
 
             {/* Actions */}
             <div className="flex justify-end gap-3 pt-3">
-              <Button variant="outline" onClick={onClose} disabled={isLoading}>
+              <Button variant="outline" onClick={handleClose} disabled={isLoading}>
                 Cancel
               </Button>
               <Button onClick={handleSave} disabled={isLoading}>

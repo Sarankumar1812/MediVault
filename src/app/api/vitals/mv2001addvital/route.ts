@@ -7,30 +7,41 @@ import { extractUserIdFromToken } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('=== Add Vital API Called ===');
+    
     // Check for token in header
     const authHeader = request.headers.get('authorization');
+    console.log('Auth header present:', !!authHeader);
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('Invalid auth header');
       return sendResponse(ApiResponse.unauthorized(), 401);
     }
 
     const token = authHeader.split(' ')[1];
     const userId = extractUserIdFromToken(token);
+    console.log('User ID extracted:', userId);
 
     if (!userId) {
+      console.log('Invalid user ID');
       return sendResponse(ApiResponse.unauthorized('Invalid token'), 401);
     }
 
     const body = await request.json();
+    console.log('Request body received:', JSON.stringify(body, null, 2));
     
     // Validate the vital data
     const validation = vitalSchema.safeParse(body);
+    console.log('Validation result:', validation);
 
     if (!validation.success) {
       const errors = validation.error.flatten().fieldErrors;
+      console.log('Validation errors:', errors);
       return sendResponse(ApiResponse.validationError(errors), 400);
     }
 
     const vitalData = validation.data;
+    console.log('Validated vital data:', vitalData);
     
     // Prepare data for database
     let dbData: {
@@ -43,8 +54,10 @@ export async function POST(request: NextRequest) {
       recordedAt: string;
     };
 
+    // Use type narrowing with switch statement
     switch (vitalData.type) {
-      case 'heart-rate':
+      case 'heart-rate': {
+        // Type is narrowed to HeartRateSchema here
         dbData = {
           type: vitalData.type,
           valueNumeric: vitalData.value,
@@ -53,8 +66,10 @@ export async function POST(request: NextRequest) {
           note: vitalData.note
         };
         break;
+      }
         
-      case 'blood-pressure':
+      case 'blood-pressure': {
+        // Type is narrowed to BloodPressureSchema here
         dbData = {
           type: vitalData.type,
           valueSystolic: vitalData.systolic,
@@ -64,8 +79,10 @@ export async function POST(request: NextRequest) {
           note: vitalData.note
         };
         break;
+      }
         
-      case 'blood-sugar':
+      case 'blood-sugar': {
+        // Type is narrowed to BloodSugarSchema here
         dbData = {
           type: vitalData.type,
           valueNumeric: vitalData.value,
@@ -74,8 +91,10 @@ export async function POST(request: NextRequest) {
           note: vitalData.note
         };
         break;
+      }
         
-      case 'weight':
+      case 'weight': {
+        // Type is narrowed to WeightSchema here
         dbData = {
           type: vitalData.type,
           valueNumeric: vitalData.value,
@@ -84,8 +103,10 @@ export async function POST(request: NextRequest) {
           note: vitalData.note
         };
         break;
+      }
         
-      case 'temperature':
+      case 'temperature': {
+        // Type is narrowed to TemperatureSchema here
         dbData = {
           type: vitalData.type,
           valueNumeric: vitalData.value,
@@ -94,16 +115,23 @@ export async function POST(request: NextRequest) {
           note: vitalData.note
         };
         break;
+      }
         
-      default:
+      default: {
+        // This should never happen due to Zod validation
+        console.log('Invalid vital type:', (vitalData as any).type);
         return sendResponse(
           ApiResponse.error('Invalid vital type'),
           400
         );
+      }
     }
+
+    console.log('Database data prepared:', dbData);
 
     // Save to database
     const vitalId = await createVital(userId, dbData);
+    console.log('Vital saved with ID:', vitalId);
 
     return sendResponse(
       ApiResponse.success('Vital added successfully', {

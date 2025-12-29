@@ -1,119 +1,98 @@
 // lib/schemas/vitalSchemas.ts
-import { z } from "zod";
+import { z } from 'zod';
 
-/* ------------------------------------------------------------------ */
-/*  Vital Types                                                        */
-/* ------------------------------------------------------------------ */
+// Define the enum values
+const vitalTypes = ['heart-rate', 'blood-pressure', 'blood-sugar', 'weight', 'temperature'] as const;
 
-export const vitalTypes = [
-  "heart-rate",
-  "blood-pressure",
-  "blood-sugar",
-  "weight",
-  "temperature",
-] as const;
+// Create the enum type
+export type VitalType = typeof vitalTypes[number];
 
-export type VitalType = (typeof vitalTypes)[number];
+// Helper function to validate date
+const isValidDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return !isNaN(date.getTime());
+};
 
-/* ------------------------------------------------------------------ */
-/*  Base Schema                                                        */
-/* ------------------------------------------------------------------ */
+// Create a reusable enum schema
+const vitalTypeEnum = z.enum(vitalTypes);
 
 export const baseVitalSchema = z.object({
-  type: z.enum(vitalTypes, {
-    message: "Invalid vital type",
-  }),
-
-  recordedAt: z
-    .string()
-    .datetime({ message: "Invalid date format. Use ISO 8601 format" }),
-
-  note: z
-    .string()
-    .max(500, "Note must be less than 500 characters")
-    .optional(),
+  type: vitalTypeEnum,
+  recordedAt: z.string()
+    .refine((val) => isValidDate(val), {
+      message: "Invalid date format. Use ISO 8601 format (YYYY-MM-DDTHH:mm:ss)"
+    }),
+  note: z.string().max(500, 'Note must be less than 500 characters').optional().default('')
 });
-
-/* ------------------------------------------------------------------ */
-/*  Heart Rate                                                         */
-/* ------------------------------------------------------------------ */
 
 export const heartRateSchema = baseVitalSchema.extend({
-  type: z.literal("heart-rate"),
-
-  value: z
-    .number({ message: "Heart rate must be a number" })
-    .min(30, "Heart rate must be at least 30 bpm")
-    .max(250, "Heart rate cannot exceed 250 bpm"),
+  type: z.literal('heart-rate'),
+  value: z.union([
+    z.number(),
+    z.string().transform((val) => parseFloat(val))
+  ])
+    .refine((val) => !isNaN(val), { message: "Heart rate must be a valid number" })
+    .refine((val) => val >= 30, { message: "Heart rate must be at least 30 bpm" })
+    .refine((val) => val <= 250, { message: "Heart rate cannot exceed 250 bpm" })
 });
-
-/* ------------------------------------------------------------------ */
-/*  Blood Pressure                                                     */
-/* ------------------------------------------------------------------ */
 
 export const bloodPressureSchema = baseVitalSchema.extend({
-  type: z.literal("blood-pressure"),
-
-  systolic: z
-    .number({ message: "Systolic must be a number" })
-    .min(60, "Systolic must be at least 60 mmHg")
-    .max(250, "Systolic cannot exceed 250 mmHg"),
-
-  diastolic: z
-    .number({ message: "Diastolic must be a number" })
-    .min(30, "Diastolic must be at least 30 mmHg")
-    .max(150, "Diastolic cannot exceed 150 mmHg"),
+  type: z.literal('blood-pressure'),
+  systolic: z.union([
+    z.number(),
+    z.string().transform((val) => parseFloat(val))
+  ])
+    .refine((val) => !isNaN(val), { message: "Systolic must be a valid number" })
+    .refine((val) => val >= 60, { message: "Systolic must be at least 60 mmHg" })
+    .refine((val) => val <= 250, { message: "Systolic cannot exceed 250 mmHg" }),
+  diastolic: z.union([
+    z.number(),
+    z.string().transform((val) => parseFloat(val))
+  ])
+    .refine((val) => !isNaN(val), { message: "Diastolic must be a valid number" })
+    .refine((val) => val >= 30, { message: "Diastolic must be at least 30 mmHg" })
+    .refine((val) => val <= 150, { message: "Diastolic cannot exceed 150 mmHg" })
 });
-
-/* ------------------------------------------------------------------ */
-/*  Blood Sugar                                                        */
-/* ------------------------------------------------------------------ */
 
 export const bloodSugarSchema = baseVitalSchema.extend({
-  type: z.literal("blood-sugar"),
-
-  value: z
-    .number({ message: "Blood sugar must be a number" })
-    .min(30, "Blood sugar must be at least 30 mg/dL")
-    .max(500, "Blood sugar cannot exceed 500 mg/dL"),
+  type: z.literal('blood-sugar'),
+  value: z.union([
+    z.number(),
+    z.string().transform((val) => parseFloat(val))
+  ])
+    .refine((val) => !isNaN(val), { message: "Blood sugar must be a valid number" })
+    .refine((val) => val >= 30, { message: "Blood sugar must be at least 30 mg/dL" })
+    .refine((val) => val <= 500, { message: "Blood sugar cannot exceed 500 mg/dL" })
 });
-
-/* ------------------------------------------------------------------ */
-/*  Weight                                                             */
-/* ------------------------------------------------------------------ */
 
 export const weightSchema = baseVitalSchema.extend({
-  type: z.literal("weight"),
-
-  value: z
-    .number({ message: "Weight must be a number" })
-    .min(10, "Weight must be at least 10 kg")
-    .max(300, "Weight cannot exceed 300 kg"),
+  type: z.literal('weight'),
+  value: z.union([
+    z.number(),
+    z.string().transform((val) => parseFloat(val))
+  ])
+    .refine((val) => !isNaN(val), { message: "Weight must be a valid number" })
+    .refine((val) => val >= 10, { message: "Weight must be at least 10 kg" })
+    .refine((val) => val <= 300, { message: "Weight cannot exceed 300 kg" })
 });
-
-/* ------------------------------------------------------------------ */
-/*  Temperature                                                        */
-/* ------------------------------------------------------------------ */
 
 export const temperatureSchema = baseVitalSchema.extend({
-  type: z.literal("temperature"),
-
-  value: z
-    .number({ message: "Temperature must be a number" })
-    .min(30, "Temperature must be at least 30°C")
-    .max(45, "Temperature cannot exceed 45°C"),
+  type: z.literal('temperature'),
+  value: z.union([
+    z.number(),
+    z.string().transform((val) => parseFloat(val))
+  ])
+    .refine((val) => !isNaN(val), { message: "Temperature must be a valid number" })
+    .refine((val) => val >= 0, { message: "Temperature must be at least 0°C" })
+    .refine((val) => val <= 110, { message: "Temperature cannot exceed 110°C" })
 });
 
-/* ------------------------------------------------------------------ */
-/*  Discriminated Union                                                */
-/* ------------------------------------------------------------------ */
-
-export const vitalSchema = z.discriminatedUnion("type", [
+export const vitalSchema = z.discriminatedUnion('type', [
   heartRateSchema,
   bloodPressureSchema,
   bloodSugarSchema,
   weightSchema,
-  temperatureSchema,
+  temperatureSchema
 ]);
 
 export type VitalData = z.infer<typeof vitalSchema>;
