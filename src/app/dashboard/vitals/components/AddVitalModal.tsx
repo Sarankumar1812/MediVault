@@ -1,3 +1,4 @@
+// app/dashboard/vitals/components/AddVitalModal.tsx - Updated
 "use client"
 
 import { useState } from "react"
@@ -10,17 +11,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/hooks/use-toast"
+import { addVital, VitalType } from "../utils/api-vitals"
 
-import {
-  getVitals,
-  saveVitals,
-  VitalType,
-  VitalEntry,
-} from "../utils/vitals"
-
-/* ----------------------------------
-   Vital Config (TYPE SAFE)
------------------------------------ */
 const VITALS: {
   type: VitalType
   label: string
@@ -61,57 +55,81 @@ const VITALS: {
   },
 ]
 
-/* ----------------------------------
-   Component
------------------------------------ */
 export default function AddVitalModal({
   open,
   onClose,
+  onSuccess,
 }: {
   open: boolean
   onClose: () => void
+  onSuccess?: () => void
 }) {
+  const { toast } = useToast()
   const [type, setType] = useState<VitalType | null>(null)
   const [value, setValue] = useState("")
   const [diastolic, setDiastolic] = useState("")
+  const [note, setNote] = useState("")
   const [dateTime, setDateTime] = useState(
     new Date().toISOString().slice(0, 16)
   )
+  const [isLoading, setIsLoading] = useState(false)
 
   const config = VITALS.find((v) => v.type === type)
 
-  /* ----------------------------------
-     Save Handler
-  ----------------------------------- */
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!type || !config || !value) return
 
-    const vitals = getVitals()
+    setIsLoading(true)
+    
+    try {
+      let vitalData: any = {
+        type,
+        recordedAt: new Date(dateTime).toISOString(),
+      };
 
-    const entry: VitalEntry = {
-      id: Date.now().toString(),
-      type,
-      unit: config.unit,
-      recordedAt: new Date(dateTime).toISOString(),
-      value:
-        type === "blood-pressure"
-          ? {
-              systolic: Number(value),
-              diastolic: Number(diastolic),
-            }
-          : Number(value),
+      if (note.trim()) {
+        vitalData.note = note.trim();
+      }
+
+      if (type === 'blood-pressure') {
+        if (!diastolic) {
+          throw new Error('Diastolic value is required for blood pressure');
+        }
+        vitalData.systolic = Number(value);
+        vitalData.diastolic = Number(diastolic);
+      } else {
+        vitalData.value = Number(value);
+      }
+
+      await addVital(vitalData);
+
+      toast({
+        title: "Success",
+        description: "Vital added successfully",
+      });
+
+      // Reset form
+      setType(null);
+      setValue("");
+      setDiastolic("");
+      setNote("");
+      setDateTime(new Date().toISOString().slice(0, 16));
+
+      // Close modal and refresh data
+      onClose();
+      if (onSuccess) {
+        onSuccess();
+      }
+
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add vital",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    vitals.unshift(entry)
-    saveVitals(vitals)
-
-    // Reset state
-    setType(null)
-    setValue("")
-    setDiastolic("")
-    setDateTime(new Date().toISOString().slice(0, 16))
-
-    onClose()
   }
 
   return (
@@ -121,7 +139,7 @@ export default function AddVitalModal({
           <DialogTitle>Add Vital</DialogTitle>
         </DialogHeader>
 
-        {/* ================= VITAL TYPE SELECTION ================= */}
+        {/* Vital Type Selection */}
         <div className="grid grid-cols-2 gap-3">
           {VITALS.map((v) => (
             <Button
@@ -129,41 +147,55 @@ export default function AddVitalModal({
               variant={type === v.type ? "default" : "outline"}
               onClick={() => setType(v.type)}
               className="justify-start"
+              disabled={isLoading}
             >
               {v.label}
             </Button>
           ))}
         </div>
 
-        {/* ================= DYNAMIC FORM ================= */}
+        {/* Dynamic Form */}
         {config && (
           <div className="space-y-4 pt-5">
-
             {/* Main value */}
             <div className="space-y-2">
               <Label>
-                {config.label} ({config.unit})
+                {config.label} ({config.unit}) *
               </Label>
               <Input
                 type="number"
                 placeholder={`Enter ${config.label.toLowerCase()}`}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
+                disabled={isLoading}
               />
             </div>
 
             {/* Blood pressure diastolic */}
             {config.dual && (
               <div className="space-y-2">
-                <Label>Diastolic ({config.unit})</Label>
+                <Label>Diastolic ({config.unit}) *</Label>
                 <Input
                   type="number"
                   placeholder="Enter diastolic value"
                   value={diastolic}
                   onChange={(e) => setDiastolic(e.target.value)}
+                  disabled={isLoading}
                 />
               </div>
             )}
+
+            {/* Note */}
+            <div className="space-y-2">
+              <Label>Note (Optional)</Label>
+              <Textarea
+                placeholder="Add any notes or context"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                disabled={isLoading}
+                rows={2}
+              />
+            </div>
 
             {/* Clinical hint */}
             <p className="text-xs text-muted-foreground">
@@ -172,21 +204,22 @@ export default function AddVitalModal({
 
             {/* Date & time */}
             <div className="space-y-2">
-              <Label>Date & Time</Label>
+              <Label>Date & Time *</Label>
               <Input
                 type="datetime-local"
                 value={dateTime}
                 onChange={(e) => setDateTime(e.target.value)}
+                disabled={isLoading}
               />
             </div>
 
             {/* Actions */}
             <div className="flex justify-end gap-3 pt-3">
-              <Button variant="outline" onClick={onClose}>
+              <Button variant="outline" onClick={onClose} disabled={isLoading}>
                 Cancel
               </Button>
-              <Button onClick={handleSave}>
-                Save Vital
+              <Button onClick={handleSave} disabled={isLoading}>
+                {isLoading ? "Saving..." : "Save Vital"}
               </Button>
             </div>
           </div>

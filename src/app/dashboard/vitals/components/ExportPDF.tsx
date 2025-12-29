@@ -1,34 +1,60 @@
+// app/dashboard/vitals/components/ExportPDF.tsx
 "use client"
 
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
 import { Button } from "@/components/ui/button"
-import { VitalEntry } from "../utils/vitals"
+import { Download } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 export default function ExportPDF({
   title,
   data,
 }: {
   title: string
-  data: VitalEntry[]
+  data: any[]
 }) {
-  const exportPDF = () => {
-    const doc = new jsPDF()
-    doc.text(title, 20, 20)
+  const { toast } = useToast()
 
-    autoTable(doc, {
-      startY: 30,
-      head: [["Date", "Value"]],
-      body: data.map((v) => [
-        new Date(v.recordedAt).toLocaleString(),
-        typeof v.value === "object"
-          ? `${v.value.systolic}/${v.value.diastolic} ${v.unit}`
-          : `${v.value} ${v.unit}`,
-      ]),
+  const handleExport = () => {
+    // Basic CSV export for now
+    if (data.length === 0) {
+      toast({
+        title: "No data",
+        description: "There's no data to export",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const headers = ["Date", "Type", "Value", "Unit"]
+    const csvRows = data.map((v) => [
+      new Date(v.recordedAt).toLocaleString(),
+      v.type,
+      typeof v.value === "number" ? v.value : `${v.value.systolic}/${v.value.diastolic}`,
+      v.unit,
+    ])
+
+    const csvContent = [
+      headers.join(","),
+      ...csvRows.map((row) => row.join(",")),
+    ].join("\n")
+
+    const blob = new Blob([csvContent], { type: "text/csv" })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${title.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+
+    toast({
+      title: "Exported",
+      description: "Data exported successfully as CSV",
     })
-
-    doc.save(`${title}.pdf`)
   }
 
-  return <Button onClick={exportPDF}>Export PDF</Button>
+  return (
+    <Button variant="outline" onClick={handleExport}>
+      <Download className="mr-2 h-4 w-4" />
+      Export
+    </Button>
+  )
 }

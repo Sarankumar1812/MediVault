@@ -1,6 +1,7 @@
+// app/dashboard/vitals/page.tsx - Updated
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   LineChart,
@@ -10,22 +11,36 @@ import {
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
 
 import AddVitalModal from "./components/AddVitalModal"
-import { getVitals, VitalEntry } from "./utils/vitals"
+import { getVitals, VitalEntry } from "./utils/api-vitals"
 
-/* ----------------------------------
-   Helpers
------------------------------------ */
-const getLatestValue = (data: VitalEntry[], type: string) =>
-  data.find((v) => v.type === type)
-
-/* ----------------------------------
-   Component
------------------------------------ */
 export default function VitalsOverviewClient() {
+  const { toast } = useToast()
   const [open, setOpen] = useState(false)
-  const vitals = getVitals()
+  const [vitals, setVitals] = useState<VitalEntry[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    fetchVitals()
+  }, [])
+
+  const fetchVitals = async () => {
+    try {
+      setIsLoading(true)
+      const data = await getVitals()
+      setVitals(data)
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load vitals",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const byType = useMemo(() => {
     return {
@@ -37,9 +52,25 @@ export default function VitalsOverviewClient() {
     }
   }, [vitals])
 
+  const handleSuccess = () => {
+    fetchVitals()
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8">
+        <div className="h-12 bg-slate-200 rounded animate-pulse w-64"></div>
+        <div className="grid grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-24 bg-slate-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
-
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
@@ -75,48 +106,48 @@ export default function VitalsOverviewClient() {
           <CardTitle>Recent Vitals</CardTitle>
         </CardHeader>
         <CardContent>
-          <table className="w-full text-sm">
-            <thead className="border-b">
-              <tr>
-                <th className="p-3 text-left">Date</th>
-                <th className="p-3 text-left">Type</th>
-                <th className="p-3 text-left">Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vitals.slice(0, 6).map((v) => (
-                <tr key={v.id} className="border-b">
-                  <td className="p-3">
-                    {new Date(v.recordedAt).toLocaleString()}
-                  </td>
-                  <td className="p-3 capitalize">{v.type.replace("-", " ")}</td>
-                  <td className="p-3 font-medium">
-                    {typeof v.value === "number"
-                      ? `${v.value} ${v.unit}`
-                      : `${v.value.systolic}/${v.value.diastolic} ${v.unit}`}
-                  </td>
-                </tr>
-              ))}
-              {vitals.length === 0 && (
+          {vitals.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="border-b">
                 <tr>
-                  <td colSpan={3} className="p-6 text-center text-muted-foreground">
-                    No vitals recorded yet
-                  </td>
+                  <th className="p-3 text-left">Date</th>
+                  <th className="p-3 text-left">Type</th>
+                  <th className="p-3 text-left">Value</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {vitals.slice(0, 6).map((v) => (
+                  <tr key={v.id} className="border-b">
+                    <td className="p-3">
+                      {new Date(v.recordedAt).toLocaleString()}
+                    </td>
+                    <td className="p-3 capitalize">{v.type.replace("-", " ")}</td>
+                    <td className="p-3 font-medium">
+                      {typeof v.value === "number"
+                        ? `${v.value} ${v.unit}`
+                        : `${v.value.systolic}/${v.value.diastolic} ${v.unit}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No vitals recorded yet. Click "Add Vital" to get started.
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <AddVitalModal open={open} onClose={() => setOpen(false)} />
+      <AddVitalModal 
+        open={open} 
+        onClose={() => setOpen(false)} 
+        onSuccess={handleSuccess}
+      />
     </div>
   )
 }
 
-/* ----------------------------------
-   Small Components
------------------------------------ */
 function Kpi({ title, value }: { title: string; value: string }) {
   return (
     <Card>
@@ -178,11 +209,11 @@ function MiniCard({
 }
 
 function renderValue(v?: VitalEntry) {
-  if (!v) return "0"
-  return typeof v.value === "number" ? `${v.value} ${v.unit}` : "—"
+  if (!v) return "-"
+  return typeof v.value === "number" ? `${v.value} ${v.unit}` : "-"
 }
 
 function renderBP(v?: VitalEntry) {
-  if (!v || typeof v.value !== "object") return "0/0"
+  if (!v || typeof v.value !== "object") return "-/-"
   return `${v.value.systolic}/${v.value.diastolic} ${v.unit}`
 }

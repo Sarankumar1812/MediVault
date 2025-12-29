@@ -89,6 +89,19 @@ export interface MVHealthProfile {
   mv_hp_updated_at: string;
 }
 
+export interface MVVital {
+  mv_vt_id: number;
+  mv_vt_user_id: number;
+  mv_vt_type: string; // 'heart-rate', 'blood-pressure', etc.
+  mv_vt_value_systolic: number | null;
+  mv_vt_value_diastolic: number | null;
+  mv_vt_value_numeric: number | null;
+  mv_vt_unit: string;
+  mv_vt_note: string | null;
+  mv_vt_recorded_at: string;
+  mv_vt_created_at: string;
+}
+
 // ============ OTP UTILITY FUNCTIONS ============
 
 // Helper function to generate OTP
@@ -337,6 +350,28 @@ async function createTables(database: Database) {
   )
 `);
 
+await database.exec(`
+  CREATE TABLE IF NOT EXISTS MV_VT_VITALS (
+    mv_vt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mv_vt_user_id INTEGER NOT NULL,
+    mv_vt_type TEXT NOT NULL CHECK(mv_vt_type IN (
+      'heart-rate', 
+      'blood-pressure', 
+      'blood-sugar', 
+      'weight', 
+      'temperature'
+    )),
+    mv_vt_value_systolic REAL,
+    mv_vt_value_diastolic REAL,
+    mv_vt_value_numeric REAL,
+    mv_vt_unit TEXT NOT NULL,
+    mv_vt_note TEXT,
+    mv_vt_recorded_at DATETIME NOT NULL,
+    mv_vt_created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (mv_vt_user_id) REFERENCES MV_UT_USERS(mv_ut_id) ON DELETE CASCADE
+  )
+`);
+
   // Create indexes for better performance
   await database.exec(`
     CREATE INDEX IF NOT EXISTS idx_mv_ut_email ON MV_UT_USERS(mv_ut_email);
@@ -348,11 +383,15 @@ async function createTables(database: Database) {
     CREATE INDEX IF NOT EXISTS idx_mv_sm_user ON MV_SM_SESSIONS(mv_sm_user_id);
     CREATE INDEX IF NOT EXISTS idx_mv_sm_token ON MV_SM_SESSIONS(mv_sm_token_hash);
     CREATE INDEX IF NOT EXISTS idx_mv_sm_expiry ON MV_SM_SESSIONS(mv_sm_expires_at);
-      CREATE INDEX IF NOT EXISTS idx_mv_hp_user_id ON MV_HP_HEALTHPROFILES(mv_hp_user_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_hp_user_id ON MV_HP_HEALTHPROFILES(mv_hp_user_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_vt_user_id_type ON MV_VT_VITALS(mv_vt_user_id, mv_vt_type);
+    CREATE INDEX IF NOT EXISTS idx_mv_vt_recorded_at ON MV_VT_VITALS(mv_vt_recorded_at);
   `);
 
   console.log('✅ MediVault Database Schema Initialized');
 }
+
+
 
 // ============ DATABASE UTILITY FUNCTIONS ============
 
@@ -451,6 +490,138 @@ export async function markOTPAsUsed(otpId: number): Promise<void> {
     'UPDATE MV_OTP_VERIFICATIONS SET mv_otp_is_used = 1 WHERE mv_otp_id = ?',
     [otpId]
   );
+}
+
+export async function createVital(
+  userId: number,
+  vitalData: {
+    type: string;
+    valueSystolic?: number;
+    valueDiastolic?: number;
+    valueNumeric?: number;
+    unit: string;
+    note?: string;
+    recordedAt: string;
+  }
+): Promise<number> {
+  const db = await getDatabase();
+  
+  const result = await db.run(
+    `INSERT INTO MV_VT_VITALS 
+     (mv_vt_user_id, mv_vt_type, mv_vt_value_systolic, 
+      mv_vt_value_diastolic, mv_vt_value_numeric, 
+      mv_vt_unit, mv_vt_note, mv_vt_recorded_at) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      vitalData.type,
+      vitalData.valueSystolic || null,
+      vitalData.valueDiastolic || null,
+      vitalData.valueNumeric || null,
+      vitalData.unit,
+      vitalData.note || null,
+      vitalData.recordedAt
+    ]
+  );
+  
+  return result.lastID!;
+}
+
+export async function getVitalsByUserId(
+  userId: number,
+  type?: string,
+  startDate?: string,
+  endDate?: string,
+  limit?: number
+): Promise<MVVital[]> {
+  const db = await getDatabase();
+  
+  let query = 'SELECT * FROM MV_VT_VITALS WHERE mv_vt_user_id = ?';
+  const params: any[] = [userId];
+  
+  if (type) {
+    query += ' AND mv_vt_type = ?';
+    params.push(type);
+  }
+  
+  if (startDate) {
+    query += ' AND mv_vt_recorded_at >= ?';
+    params.push(startDate);
+  }
+  
+  if (endDate) {
+    query += ' AND mv_vt_recorded_at <= ?';
+    params.push(endDate);
+  }
+  
+  query += ' ORDER BY mv_vt_recorded_at DESC';
+  
+  if (limit) {
+    query += ' LIMIT ?';
+    params.push(limit);
+  }
+  
+  const vitals = await db.all<MVVital[]>(query, params);
+  return vitals;
+}
+
+export async function getVitalStats(
+  userId: number,
+  type: string,
+  days: number = 30
+): Promise<{
+  avg: number;
+  min: number;
+  max: number;
+  count: number;
+  recent: MVVital[];
+}> {
+  const db = await getDatabase();
+  
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  
+  const vitals = await db.all<MVVital[]>(
+    `SELECT * FROM MV_VT_VITALS 
+     WHERE mv_vt_user_id = ? 
+       AND mv_vt_type = ? 
+       AND mv_vt_recorded_at >= ?
+     ORDER BY mv_vt_recorded_at DESC`,
+    [userId, type, startDate.toISOString()]
+  );
+  
+  if (vitals.length === 0) {
+    return { avg: 0, min: 0, max: 0, count: 0, recent: [] };
+  }
+  
+  // Extract numeric values based on type
+  const numericValues = vitals.map(v => {
+    if (type === 'blood-pressure') {
+      return v.mv_vt_value_systolic || 0;
+    }
+    return v.mv_vt_value_numeric || 0;
+  });
+  
+  const avg = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+  const min = Math.min(...numericValues);
+  const max = Math.max(...numericValues);
+  
+  return {
+    avg,
+    min,
+    max,
+    count: vitals.length,
+    recent: vitals.slice(0, 7)
+  };
+}
+
+export async function deleteVital(vitalId: number, userId: number): Promise<boolean> {
+  const db = await getDatabase();
+  const result = await db.run(
+    'DELETE FROM MV_VT_VITALS WHERE mv_vt_id = ? AND mv_vt_user_id = ?',
+    [vitalId, userId]
+  );
+  return result.changes ? result.changes > 0 : false;
 }
 
 // Create session

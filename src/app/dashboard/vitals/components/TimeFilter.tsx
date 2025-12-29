@@ -1,11 +1,13 @@
+// app/dashboard/vitals/components/TimeFilter.tsx
 "use client"
 
 import { Button } from "@/components/ui/button"
 
-const ranges = [
-  { label: "24H", value: 1 },
-  { label: "7D", value: 7 },
-  { label: "1M", value: 30 },
+const TIME_FILTERS = [
+  { label: "24h", value: 1 },
+  { label: "7d", value: 7 },
+  { label: "30d", value: 30 },
+  { label: "3M", value: 90 },
   { label: "1Y", value: 365 },
 ]
 
@@ -14,18 +16,18 @@ export default function TimeFilter({
   onChange,
 }: {
   value: number
-  onChange: (v: number) => void
+  onChange: (value: number) => void
 }) {
   return (
     <div className="flex gap-2">
-      {ranges.map((r) => (
+      {TIME_FILTERS.map((filter) => (
         <Button
-          key={r.value}
+          key={filter.value}
+          variant={value === filter.value ? "default" : "outline"}
           size="sm"
-          variant={value === r.value ? "default" : "outline"}
-          onClick={() => onChange(r.value)}
+          onClick={() => onChange(filter.value)}
         >
-          {r.label}
+          {filter.label}
         </Button>
       ))}
     </div>
