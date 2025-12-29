@@ -2,8 +2,8 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { Eye, EyeOff, ChevronLeft } from "lucide-react"
-import { setAuthToken } from "@/lib/auth-client"
+import { ChevronLeft } from "lucide-react"
+import { saveAuthData } from "@/lib/auth-client"
 
 type LoginStep = "email" | "otp"
 
@@ -45,6 +45,8 @@ export default function LoginFlow({
   const sendLoginOTP = async (email: string) => {
     try {
       setLoading(true)
+      console.log('LoginFlow: Sending OTP to:', email)
+      
       const response = await fetch('/api/auth/mv1007sendloginotp', {
         method: 'POST',
         headers: {
@@ -54,21 +56,28 @@ export default function LoginFlow({
       })
 
       const data = await response.json()
+      console.log('LoginFlow: Send OTP response:', data)
 
       if (!response.ok) {
         throw new Error(data.message || 'Failed to send OTP')
       }
 
       setUserId(data.data.userId)
-      onShowToast("success", data.message || "OTP sent successfully")
+      
+      // Show success message
+      const successMessage = data.message || "OTP sent successfully"
+      onShowToast("success", successMessage)
       
       // In development, show OTP in console
       if (process.env.NODE_ENV === 'development' && data.data.debugOtp) {
         console.log(`Development OTP: ${data.data.debugOtp}`)
+        // Also show in toast for easy testing
+        onShowToast("info", `Dev OTP: ${data.data.debugOtp}`)
       }
       
       return { success: true, data }
     } catch (error: any) {
+      console.error('LoginFlow: Send OTP error:', error)
       onShowToast("error", error.message || "Failed to send OTP")
       return { success: false, error: error.message }
     } finally {
@@ -76,41 +85,67 @@ export default function LoginFlow({
     }
   }
 
-  // Verify login OTP API call
-  const verifyLoginOTP = async (email: string, otp: string) => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/auth/mv1008verifyloginotp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contact: email,
-          otp: otp
-        })
+// Alternative direct save approach
+const verifyLoginOTP = async (email: string, otp: string) => {
+  try {
+    setLoading(true);
+    const response = await fetch('/api/auth/mv1008verifyloginotp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contact: email,
+        otp: otp
       })
+    });
 
-      const data = await response.json()
+    const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to verify OTP')
-      }
-
-      // Store token
-      if (data.data.token) {
-        setAuthToken(data.data.token, true)
-      }
-
-      onShowToast("success", data.message || "Login successful!")
-      return { success: true, data }
-    } catch (error: any) {
-      onShowToast("error", error.message || "Failed to verify OTP")
-      return { success: false, error: error.message }
-    } finally {
-      setLoading(false)
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to verify OTP');
     }
+
+    // 🔥 DIRECT SAVE APPROACH
+    if (data.data.token && data.data.userId) {
+      console.log('DIRECT SAVE: Saving auth data...');
+      
+      // Direct localStorage save
+      localStorage.setItem('medivault-auth-token', data.data.token);
+      localStorage.setItem('medivault-user-id', data.data.userId.toString());
+      localStorage.setItem('medivault-user-email', data.data.email || '');
+      localStorage.setItem('medivault-remember-me', 'true');
+      
+      console.log('DIRECT SAVE: Auth data saved');
+      console.log('Token saved:', localStorage.getItem('medivault-auth-token') ? 'Yes' : 'No');
+      console.log('User ID saved:', localStorage.getItem('medivault-user-id'));
+      
+      // Dispatch events
+      window.dispatchEvent(new CustomEvent('authStateChanged'));
+      window.dispatchEvent(new Event('storage'));
+    }
+
+    onShowToast("success", data.message || "Login successful!");
+    
+    // Clear form
+    setEmail("");
+    setOtpDigits(["", "", "", "", "", ""]);
+    
+    // Call success callback
+    setTimeout(() => {
+      if (onLoginSuccess) {
+        onLoginSuccess();
+      }
+    }, 300);
+    
+    return { success: true, data };
+  } catch (error: any) {
+    onShowToast("error", error.message || "Failed to verify OTP");
+    return { success: false, error: error.message };
+  } finally {
+    setLoading(false);
   }
+};
 
   // Handle email submission
   const handleSendOTP = async () => {
@@ -138,14 +173,17 @@ export default function LoginFlow({
     const result = await verifyLoginOTP(email, otp)
     
     if (result.success) {
-      // Clear form
+      // Clear form after successful login
       setEmail("")
       setOtpDigits(["", "", "", "", "", ""])
       
-      // Call success callback
-      if (onLoginSuccess) {
-        onLoginSuccess()
-      }
+      // Call success callback after a short delay to ensure events are processed
+      setTimeout(() => {
+        if (onLoginSuccess) {
+          console.log('LoginFlow: Calling onLoginSuccess callback')
+          onLoginSuccess()
+        }
+      }, 300)
     }
   }
 

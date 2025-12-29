@@ -76,21 +76,17 @@ export default function AuthModal({ open, onOpenChange, initialMode, onOpenPriva
   }
 
   const handleLoginSuccess = () => {
+    console.log('AuthModal: Login successful, closing modal...')
     onShowToast("success", "Welcome back to MediVault!")
     onOpenChange(false)
-    // Redirect to dashboard
-    setTimeout(() => {
-      window.location.href = '/dashboard'
-    }, 1000)
+    // User stays on landing page, navbar updates via events
   }
 
   const handleSignupComplete = () => {
+    console.log('AuthModal: Signup complete, closing modal...')
     onShowToast("success", "Welcome to MediVault!")
     onOpenChange(false)
-    // Redirect to dashboard
-    setTimeout(() => {
-      window.location.href = '/dashboard'
-    }, 1000)
+    // User stays on landing page, navbar updates via events
   }
 
   const handleEscapeKey = (e: React.KeyboardEvent) => {

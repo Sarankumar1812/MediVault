@@ -1,105 +1,129 @@
-// app/api/auth/mv1007sendloginotp/route.ts
-import { NextRequest } from 'next/server';
-import { getDatabase, generateOTP, hashOTP, getUserByEmail } from '@/lib/database';
-import { emailService } from '@/lib/email-service';
-import { contactMethodSchema } from '@/lib/schemas/authSchemas';
-import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
+import { NextRequest } from "next/server";
+import {
+  generateOTP,
+  hashOTP,
+  getUserByEmail,
+  saveOTP,
+} from "@/lib/database";
+import { emailService } from "@/lib/email-service";
+import { contactMethodSchema } from "@/lib/schemas/authSchemas";
+import { ApiResponse, sendResponse } from "@/lib/utils/apiResponse";
 
 export async function POST(request: NextRequest) {
   try {
+    /* ----------------------------------------------------
+       1. Parse & validate request
+    ---------------------------------------------------- */
     const body = await request.json();
     const validation = contactMethodSchema.safeParse(body);
 
     if (!validation.success) {
-      const errors = validation.error.flatten().fieldErrors;
-      return sendResponse(ApiResponse.validationError(errors), 400);
-    }
-
-    const { contact } = validation.data;
-    const db = await getDatabase();
-
-    // Check if contact is email
-    const isEmail = contact.includes('@');
-    if (!isEmail) {
       return sendResponse(
-        ApiResponse.error('Please use email address'),
+        ApiResponse.validationError(
+          validation.error.flatten().fieldErrors
+        ),
         400
       );
     }
 
-    const contactValue = contact.toLowerCase();
-    
-    // Check if user exists
-    const user = await getUserByEmail(contactValue);
+    const { contact } = validation.data;
+
+    /* ----------------------------------------------------
+       2. Enforce EMAIL login only
+    ---------------------------------------------------- */
+    const isEmail = contact.includes("@");
+    if (!isEmail) {
+      return sendResponse(
+        ApiResponse.error("Please use a valid email address"),
+        400
+      );
+    }
+
+    const email = contact.toLowerCase().trim();
+
+    /* ----------------------------------------------------
+       3. Fetch user
+    ---------------------------------------------------- */
+    const user = await getUserByEmail(email);
 
     if (!user) {
       return sendResponse(
-        ApiResponse.error('No account found with this email. Please sign up first.'),
+        ApiResponse.error(
+          "No account found with this email. Please sign up first."
+        ),
         404
       );
     }
 
-    // Check account status
-    if (user.mv_ut_account_status !== 'active') {
+    if (user.mv_ut_account_status !== "active") {
       return sendResponse(
-        ApiResponse.error(`Account is ${user.mv_ut_account_status}`),
+        ApiResponse.error(
+          `Account is ${user.mv_ut_account_status}. Please contact support.`
+        ),
         403
       );
     }
 
-    // Generate OTP
+    /* ----------------------------------------------------
+       4. Generate & store OTP (SAFE)
+    ---------------------------------------------------- */
     const otp = generateOTP(6);
     const otpHash = hashOTP(otp);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store OTP in database
-    await db.run(
-      `INSERT INTO MV_OTP_VERIFICATIONS (
-        mv_otp_user_id, mv_otp_contact_type, mv_otp_contact_value, mv_otp_code_hash,
-        mv_otp_purpose, mv_otp_expires_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        user.mv_ut_id,
-        'email',
-        contactValue,
-        otpHash,
-        'login',
-        expiresAt.toISOString()
-      ]
+    // 🔒 Transaction-safe UPSERT
+    await saveOTP(
+      "email",
+      email,
+      otpHash,
+      "login",
+      user.mv_ut_id
     );
 
-    // Send OTP via Email
+    /* ----------------------------------------------------
+       5. Send OTP Email
+    ---------------------------------------------------- */
     try {
-      const emailSent = await emailService.sendOTP(contactValue, otp, 'login');
-      
-      if (!emailSent) {
+      const sent = await emailService.sendOTP(
+        email,
+        otp,
+        "login"
+      );
+
+      if (!sent) {
         return sendResponse(
-          ApiResponse.error('Failed to send OTP email. Please try again.'),
+          ApiResponse.error(
+            "Failed to send OTP email. Please try again."
+          ),
           500
         );
       }
-    } catch (emailError) {
-      console.error('Email sending error:', emailError);
+    } catch (err) {
+      console.error("Email service error:", err);
       return sendResponse(
-        ApiResponse.error('Email service temporarily unavailable. Please try again later.'),
+        ApiResponse.error(
+          "Email service temporarily unavailable. Please try again later."
+        ),
         503
       );
     }
 
+    /* ----------------------------------------------------
+       6. Success response
+    ---------------------------------------------------- */
     return sendResponse(
-      ApiResponse.success('Login OTP sent successfully', {
-        email: contactValue,
+      ApiResponse.success("Login OTP sent successfully", {
+        email,
         userId: user.mv_ut_id,
-        // In development only - remove in production
-        ...(process.env.NODE_ENV === 'development' && { debugOtp: otp })
+        ...(process.env.NODE_ENV === "development" && {
+          debugOtp: otp,
+        }),
       }),
       200
     );
-
   } catch (error) {
-    console.error('Send login OTP error:', error);
+    console.error("Send login OTP error:", error);
     return sendResponse(
-      ApiResponse.error('Failed to send OTP'),
+      ApiResponse.error("Failed to send login OTP"),
       500
     );
   }

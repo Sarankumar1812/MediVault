@@ -74,6 +74,21 @@ export interface MVRegistrationAttempt {
   mv_ra_completed_at: string | null;
 }
 
+export interface MVHealthProfile {
+  mv_hp_id: number;
+  mv_hp_user_id: number;
+  mv_hp_height: number;
+  mv_hp_weight: number;
+  mv_hp_blood_group: string;
+  mv_hp_conditions: string | null;
+  mv_hp_allergies: string | null;
+  mv_hp_chronic_illnesses: string | null;
+  mv_hp_emergency_contact_name: string;
+  mv_hp_emergency_contact_phone: string;
+  mv_hp_created_at: string;
+  mv_hp_updated_at: string;
+}
+
 // ============ OTP UTILITY FUNCTIONS ============
 
 // Helper function to generate OTP
@@ -97,6 +112,91 @@ export function verifyOTP(inputOTP: string, hashedOTP: string): boolean {
   return inputHash === hashedOTP;
 }
 
+
+// Get health profile by user ID
+export async function getHealthProfileByUserId(userId: number): Promise<MVHealthProfile | null> {
+  const db = await getDatabase();
+  const profile = await db.get<MVHealthProfile>(
+    'SELECT * FROM MV_HP_HEALTHPROFILES WHERE mv_hp_user_id = ?',
+    [userId]
+  );
+  return profile || null;
+}
+
+// Create or update health profile
+export async function saveHealthProfile(
+  userId: number,
+  profileData: {
+    height: number;
+    weight: number;
+    bloodGroup: string;
+    conditions?: string;
+    allergies?: string;
+    chronicIllnesses?: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
+  }
+): Promise<number> {
+  const db = await getDatabase();
+  
+  // Check if profile exists
+  const existingProfile = await getHealthProfileByUserId(userId);
+  
+  if (existingProfile) {
+    // Update existing profile
+    const result = await db.run(
+      `UPDATE MV_HP_HEALTHPROFILES 
+       SET mv_hp_height = ?, mv_hp_weight = ?, mv_hp_blood_group = ?,
+           mv_hp_conditions = ?, mv_hp_allergies = ?, mv_hp_chronic_illnesses = ?,
+           mv_hp_emergency_contact_name = ?, mv_hp_emergency_contact_phone = ?,
+           mv_hp_updated_at = datetime('now')
+       WHERE mv_hp_user_id = ?`,
+      [
+        profileData.height,
+        profileData.weight,
+        profileData.bloodGroup,
+        profileData.conditions || null,
+        profileData.allergies || null,
+        profileData.chronicIllnesses || null,
+        profileData.emergencyContactName,
+        profileData.emergencyContactPhone,
+        userId
+      ]
+    );
+    return existingProfile.mv_hp_id;
+  } else {
+    // Create new profile
+    const result = await db.run(
+      `INSERT INTO MV_HP_HEALTHPROFILES 
+       (mv_hp_user_id, mv_hp_height, mv_hp_weight, mv_hp_blood_group,
+        mv_hp_conditions, mv_hp_allergies, mv_hp_chronic_illnesses,
+        mv_hp_emergency_contact_name, mv_hp_emergency_contact_phone) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        profileData.height,
+        profileData.weight,
+        profileData.bloodGroup,
+        profileData.conditions || null,
+        profileData.allergies || null,
+        profileData.chronicIllnesses || null,
+        profileData.emergencyContactName,
+        profileData.emergencyContactPhone
+      ]
+    );
+    return result.lastID!;
+  }
+}
+
+// Delete health profile
+export async function deleteHealthProfile(userId: number): Promise<boolean> {
+  const db = await getDatabase();
+  const result = await db.run(
+    'DELETE FROM MV_HP_HEALTHPROFILES WHERE mv_hp_user_id = ?',
+    [userId]
+  );
+  return result.changes ? result.changes > 0 : false;
+}
 // ============ DATABASE CONNECTION ============
 
 let db: Database | null = null;
@@ -219,6 +319,24 @@ async function createTables(database: Database) {
     )
   `);
 
+  await database.exec(`
+  CREATE TABLE IF NOT EXISTS MV_HP_HEALTHPROFILES (
+    mv_hp_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mv_hp_user_id INTEGER NOT NULL UNIQUE,
+    mv_hp_height REAL NOT NULL,
+    mv_hp_weight REAL NOT NULL,
+    mv_hp_blood_group TEXT NOT NULL,
+    mv_hp_conditions TEXT,
+    mv_hp_allergies TEXT,
+    mv_hp_chronic_illnesses TEXT,
+    mv_hp_emergency_contact_name TEXT NOT NULL,
+    mv_hp_emergency_contact_phone TEXT NOT NULL,
+    mv_hp_created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    mv_hp_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (mv_hp_user_id) REFERENCES MV_UT_USERS(mv_ut_id) ON DELETE CASCADE
+  )
+`);
+
   // Create indexes for better performance
   await database.exec(`
     CREATE INDEX IF NOT EXISTS idx_mv_ut_email ON MV_UT_USERS(mv_ut_email);
@@ -230,6 +348,7 @@ async function createTables(database: Database) {
     CREATE INDEX IF NOT EXISTS idx_mv_sm_user ON MV_SM_SESSIONS(mv_sm_user_id);
     CREATE INDEX IF NOT EXISTS idx_mv_sm_token ON MV_SM_SESSIONS(mv_sm_token_hash);
     CREATE INDEX IF NOT EXISTS idx_mv_sm_expiry ON MV_SM_SESSIONS(mv_sm_expires_at);
+      CREATE INDEX IF NOT EXISTS idx_mv_hp_user_id ON MV_HP_HEALTHPROFILES(mv_hp_user_id);
   `);
 
   console.log('✅ MediVault Database Schema Initialized');
