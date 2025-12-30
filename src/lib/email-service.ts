@@ -20,7 +20,8 @@ export interface EmailConfig {
 }
 
 class EmailService {
-  private transporter: nodemailer.Transporter;
+ private transporter: ReturnType<typeof nodemailer.createTransport>;
+
   private config: EmailConfig;
 
   constructor() {
