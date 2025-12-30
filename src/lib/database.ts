@@ -265,7 +265,7 @@ export async function getDatabase(): Promise<Database> {
       // Decide DB location based on environment
       const dbFilePath =
         process.env.NODE_ENV === 'production'
-          ? '/data/medivault.db'           // Render persistent disk
+          ? "/tmp/medivault.db"
           : path.join(process.cwd(), 'medivault.db'); // Local dev
 
       const database = await open({
