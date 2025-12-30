@@ -4,6 +4,8 @@ import { getDatabase } from '@/lib/database';
 import { fullProfileSchema } from '@/lib/schemas/authSchemas';
 import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { verifyToken, extractUserIdFromToken } from '@/lib/auth';
+export const runtime = "nodejs";
+
 
 export async function POST(request: NextRequest) {
   try {

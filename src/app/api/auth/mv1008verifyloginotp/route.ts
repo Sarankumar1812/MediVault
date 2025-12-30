@@ -5,6 +5,9 @@ import { otpVerificationSchema } from '@/lib/schemas/authSchemas';
 import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { generateToken, hashToken } from '@/lib/auth';
 
+export const runtime = "nodejs";
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

@@ -6,6 +6,8 @@ import { uploadReportSchema } from '@/lib/schemas/reportSchemas';
 import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { extractUserIdFromToken } from '@/lib/auth';
 
+export const runtime = "nodejs";
+
 // Use Next.js route config
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // 60 seconds for large files

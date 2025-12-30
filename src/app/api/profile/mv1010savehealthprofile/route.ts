@@ -5,6 +5,8 @@ import { healthProfileSchema } from '@/lib/schemas/healthSchemas';
 import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { extractUserIdFromToken } from '@/lib/auth';
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     console.log('💾 POST Save Health Profile API called');

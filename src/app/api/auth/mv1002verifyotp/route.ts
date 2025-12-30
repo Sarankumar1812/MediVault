@@ -6,6 +6,9 @@ import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { generateToken } from '@/lib/auth';
 import { emailService } from '@/lib/email-service';
 
+export const runtime = "nodejs";
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

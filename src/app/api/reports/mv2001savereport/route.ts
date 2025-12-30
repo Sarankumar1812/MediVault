@@ -4,6 +4,8 @@ import { updateReport } from '@/lib/database';
 import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { extractUserIdFromToken } from '@/lib/auth';
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     // Check authentication

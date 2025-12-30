@@ -4,6 +4,8 @@ import { getHealthProfileByUserId } from '@/lib/database';
 import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { extractUserIdFromToken } from '@/lib/auth';
 
+export const runtime = "nodejs";
+
 export async function GET(request: NextRequest) {
   try {
     console.log('🔍 GET Health Profile API called');

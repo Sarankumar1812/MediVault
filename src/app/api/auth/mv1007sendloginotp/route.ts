@@ -9,6 +9,9 @@ import { emailService } from "@/lib/email-service";
 import { contactMethodSchema } from "@/lib/schemas/authSchemas";
 import { ApiResponse, sendResponse } from "@/lib/utils/apiResponse";
 
+export const runtime = "nodejs";
+
+
 export async function POST(request: NextRequest) {
   try {
     /* ----------------------------------------------------

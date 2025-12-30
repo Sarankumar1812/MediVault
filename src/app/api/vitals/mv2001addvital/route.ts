@@ -5,6 +5,8 @@ import { vitalSchema } from '@/lib/schemas/vitalSchemas';
 import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { extractUserIdFromToken } from '@/lib/auth';
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     console.log('=== Add Vital API Called ===');

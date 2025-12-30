@@ -6,6 +6,8 @@ import { ApiResponse, sendResponse } from '@/lib/utils/apiResponse';
 import { verifyToken, extractUserIdFromToken } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     // Check for token in header

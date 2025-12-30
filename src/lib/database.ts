@@ -262,11 +262,21 @@ let dbPromise: Promise<Database> | null = null;
 export async function getDatabase(): Promise<Database> {
   if (!dbPromise) {
     dbPromise = (async () => {
+      // Decide DB location based on environment
+      const dbFilePath =
+        process.env.NODE_ENV === 'production'
+          ? '/data/medivault.db'           // Render persistent disk
+          : path.join(process.cwd(), 'medivault.db'); // Local dev
+
       const database = await open({
-        filename: path.join(process.cwd(), 'medivault.db'),
+        filename: dbFilePath,
         driver: sqlite3.Database,
-        mode: sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE | sqlite3.OPEN_FULLMUTEX
+        mode:
+          sqlite3.OPEN_READWRITE |
+          sqlite3.OPEN_CREATE |
+          sqlite3.OPEN_FULLMUTEX
       });
+
 
       // Enable foreign keys and WAL mode for better concurrency
       await database.exec('PRAGMA foreign_keys = ON');
@@ -694,11 +704,11 @@ export async function getReportById(reportId: number): Promise<MVReport | null> 
 }
 
 export async function getReportWithAccess(
-  reportId: number, 
+  reportId: number,
   userId: number
 ): Promise<MVReport | null> {
   const db = await getDatabase();
-  
+
   // Check if user owns the report or has been shared access
   const report = await db.get<MVReport>(
     `SELECT r.* FROM MV_RP_REPORTS r
@@ -708,7 +718,7 @@ export async function getReportWithAccess(
      WHERE r.mv_rp_id = ? AND (r.mv_rp_user_id = ? OR s.mv_rs_id IS NOT NULL)`,
     [userId, reportId, userId]
   );
-  
+
   return report || null;
 }
 
@@ -725,10 +735,10 @@ export async function updateReport(
   }
 ): Promise<boolean> {
   const db = await getDatabase();
-  
+
   const fields = [];
   const values = [];
-  
+
   if (updateData.name) {
     fields.push('mv_rp_name = ?');
     values.push(updateData.name);
@@ -755,17 +765,17 @@ export async function updateReport(
     values.push(JSON.stringify(updateData.extractedData));
     values.push(1); // Mark as extracted
   }
-  
+
   if (fields.length === 0) {
     return false;
   }
-  
+
   fields.push('mv_rp_updated_at = datetime("now")');
-  
+
   values.push(reportId);
-  
+
   const query = `UPDATE MV_RP_REPORTS SET ${fields.join(', ')} WHERE mv_rp_id = ?`;
-  
+
   try {
     const result = await db.run(query, values);
     return result.changes ? result.changes > 0 : false;
@@ -777,13 +787,13 @@ export async function updateReport(
 
 export async function deleteReport(reportId: number, userId: number): Promise<boolean> {
   const db = await getDatabase();
-  
+
   // Only owner can delete
   const result = await db.run(
     'DELETE FROM MV_RP_REPORTS WHERE mv_rp_id = ? AND mv_rp_user_id = ?',
     [reportId, userId]
   );
-  
+
   return result.changes ? result.changes > 0 : false;
 }
 
@@ -799,10 +809,10 @@ export async function shareReport(
   }
 ): Promise<number> {
   const db = await getDatabase();
-  
+
   // Generate unique access token for link sharing
   const accessToken = crypto.randomBytes(32).toString('hex');
-  
+
   const result = await db.run(
     `INSERT INTO MV_RS_REPORT_SHARES 
      (mv_rs_report_id, mv_rs_shared_by, mv_rs_shared_to, 
@@ -820,13 +830,13 @@ export async function shareReport(
       shareData.expiresAt || null
     ]
   );
-  
+
   return result.lastID!;
 }
 
 export async function getSharedReports(userId: number, type: 'shared_with_me' | 'shared_by_me') {
   const db = await getDatabase();
-  
+
   if (type === 'shared_with_me') {
     const results = await db.all<Array<{
       // Report fields
@@ -867,7 +877,7 @@ export async function getSharedReports(userId: number, type: 'shared_with_me' | 
        ORDER BY s.mv_rs_created_at DESC`,
       [userId]
     );
-    
+
     return results.map(result => ({
       report: {
         mv_rp_id: result.mv_rp_id,
@@ -897,7 +907,7 @@ export async function getSharedReports(userId: number, type: 'shared_with_me' | 
         }
       }
     }));
-    
+
   } else {
     const results = await db.all<Array<{
       // Report fields
@@ -940,7 +950,7 @@ export async function getSharedReports(userId: number, type: 'shared_with_me' | 
        ORDER BY s.mv_rs_created_at DESC`,
       [userId]
     );
-    
+
     return results.map(result => ({
       report: {
         mv_rp_id: result.mv_rp_id,
@@ -991,7 +1001,7 @@ export function formatReportType(type: string): string {
     'doctor_notes': 'Doctor Notes',
     'other': 'Other'
   };
-  
+
   return typeMap[type] || type;
 }
 
@@ -1000,7 +1010,7 @@ export async function getReportByAccessToken(token: string): Promise<{
   share: MVReportShare;
 } | null> {
   const db = await getDatabase();
-  
+
   const result = await db.get<{
     // Report fields
     mv_rp_id: number;
@@ -1049,9 +1059,9 @@ export async function getReportByAccessToken(token: string): Promise<{
        AND (s.mv_rs_expires_at IS NULL OR s.mv_rs_expires_at > datetime('now'))`,
     [token]
   );
-  
+
   if (!result) return null;
-  
+
   // Build report object
   const report: MVReport = {
     mv_rp_id: result.mv_rp_id,
@@ -1071,7 +1081,7 @@ export async function getReportByAccessToken(token: string): Promise<{
     mv_rp_created_at: result.mv_rp_created_at,
     mv_rp_updated_at: result.mv_rp_updated_at
   };
-  
+
   // Build share object
   const share: MVReportShare = {
     mv_rs_id: result.mv_rs_id,
@@ -1086,20 +1096,20 @@ export async function getReportByAccessToken(token: string): Promise<{
     mv_rs_is_active: result.mv_rs_is_active,
     mv_rs_created_at: result.mv_rs_created_at
   };
-  
+
   return { report, share };
 }
 
 export async function revokeShare(shareId: number, userId: number): Promise<boolean> {
   const db = await getDatabase();
-  
+
   const result = await db.run(
     `UPDATE MV_RS_REPORT_SHARES 
      SET mv_rs_is_active = 0 
      WHERE mv_rs_id = ? AND mv_rs_shared_by = ?`,
     [shareId, userId]
   );
-  
+
   return result.changes ? result.changes > 0 : false;
 }
 
